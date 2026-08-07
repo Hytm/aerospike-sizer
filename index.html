@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aerospike Cluster Sizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0A0C;
+    --panel:#131316;
+    --panel-2:#1A1A1E;
+    --panel-3:#0F0F12;
+    --border:#26262B;
+    --border-soft:#1D1D21;
+    --text:#F2F1ED;
+    --text-dim:#9B9AA1;
+    --text-faint:#5C5B62;
+    --red:#FF5A3C;
+    --red-dim:rgba(255,90,60,.12);
+    --green:#34D399;
+    --amber:#FBBF24;
+    --bad:#FB5B5B;
+    --blue:#5B9DFF;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+  ::selection{background:var(--red);color:#0A0A0C;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .disp{font-family:'Space Grotesk',sans-serif;}
+
+  .wrap{max-width:1240px;margin:0 auto;padding:40px 24px 90px;}
+
+  header{margin-bottom:32px;}
+  .brand-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+  .brand-mark{width:22px;height:22px;background:var(--red);border-radius:5px;display:inline-block;}
+  .brand-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;color:var(--red);text-transform:uppercase;}
+  h1{font-family:'Space Grotesk',sans-serif;font-size:32px;margin:0 0 8px;font-weight:600;letter-spacing:-0.01em;line-height:1.15;}
+  header p{color:var(--text-dim);font-size:14px;margin:0;max-width:640px;line-height:1.55;}
+
+  .steps{display:flex;gap:8px;margin-top:20px;flex-wrap:wrap;}
+  .step-pill{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-faint);border:1px solid var(--border);border-radius:20px;padding:5px 12px;}
+  .step-pill b{color:var(--text-dim);}
+
+  .grid{display:grid;grid-template-columns:360px 1fr;gap:20px;}
+  @media (max-width:940px){.grid{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;}
+  .panel + .panel{margin-top:16px;}
+  .panel h2{font-family:'Space Grotesk',sans-serif;font-size:14.5px;margin:0 0 16px;font-weight:600;display:flex;align-items:center;gap:9px;}
+  .panel h2::before{content:'';width:7px;height:7px;border-radius:2px;background:var(--red);display:inline-block;}
+  .panel .subhead{font-size:11.5px;color:var(--text-faint);margin:-10px 0 16px;line-height:1.5;}
+
+  .field{margin-bottom:14px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;color:var(--text-dim);margin-bottom:6px;}
+  .field label span.hint{font-size:10.5px;color:var(--text-faint);}
+  .field input[type=number], .field input[type=text], .field select{
+    width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+    padding:9px 10px;border-radius:7px;font-family:'IBM Plex Mono',monospace;font-size:13.5px;
+  }
+  .field input:focus, .field select:focus{outline:none;border-color:var(--red);}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .field-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+
+  .toggle-row{display:flex;gap:6px;}
+  .toggle-btn{flex:1;background:var(--panel-2);border:1px solid var(--border);color:var(--text-dim);padding:8px 6px;font-size:12px;border-radius:7px;cursor:pointer;font-family:'IBM Plex Mono',monospace;transition:all .12s;}
+  .toggle-btn.active{border-color:var(--red);color:var(--red);background:var(--red-dim);}
+
+  .switch-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0;}
+  .switch-label{font-size:12.5px;color:var(--text-dim);}
+  .switch{position:relative;width:38px;height:22px;flex:none;}
+  .switch input{opacity:0;width:0;height:0;}
+  .switch .slider{position:absolute;inset:0;background:var(--panel-2);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:.15s;}
+  .switch .slider::before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:var(--text-faint);border-radius:50%;transition:.15s;}
+  .switch input:checked + .slider{background:var(--red-dim);border-color:var(--red);}
+  .switch input:checked + .slider::before{transform:translateX(16px);background:var(--red);}
+  .switch input:disabled + .slider{opacity:.4;cursor:not-allowed;}
+
+  details{margin-top:4px;}
+  summary{font-size:11.5px;color:var(--text-faint);cursor:pointer;padding:6px 0;user-select:none;}
+  summary:hover{color:var(--text-dim);}
+
+  .warn-box{background:rgba(251,91,91,.08);border:1px solid rgba(251,91,91,.3);border-radius:8px;padding:10px 12px;font-size:11.5px;color:var(--bad);line-height:1.5;margin-top:10px;}
+
+  .hero-result{background:linear-gradient(135deg, var(--panel) 0%, var(--panel-3) 100%);border:1px solid var(--border);border-radius:14px;padding:28px 26px;display:flex;align-items:center;gap:28px;margin-bottom:16px;flex-wrap:wrap;}
+  .node-count{font-family:'Space Grotesk',sans-serif;font-size:60px;font-weight:700;line-height:1;color:var(--red);}
+  .node-count small{font-size:15px;color:var(--text-dim);font-weight:400;margin-left:6px;font-family:'Inter',sans-serif;}
+  .hero-meta{flex:1;min-width:220px;}
+  .hero-meta .constraint-tag{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);margin-bottom:8px;}
+  .hero-meta p{margin:0;font-size:13px;color:var(--text-dim);line-height:1.5;}
+
+  .metrics-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;}
+  .metric-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;}
+  .metric-card .label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);margin-bottom:8px;}
+  .metric-card .value{font-family:'IBM Plex Mono',monospace;font-size:21px;font-weight:600;}
+  .metric-card .subvalue{font-size:11.5px;color:var(--text-dim);margin-top:4px;}
+  .bar-track{height:5px;background:var(--panel-2);border-radius:3px;margin-top:10px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:3px;transition:width .25s ease;}
+
+  .node-grid-panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;}
+  .node-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(60px,1fr));gap:8px;margin-top:14px;}
+  .node-box{background:var(--panel-2);border:1px solid var(--border-soft);border-radius:6px;padding:6px 6px 5px;}
+  .node-box .nid{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-faint);margin-bottom:4px;}
+  .node-mini-bar{height:3px;background:#0A0A0C;border-radius:2px;margin-bottom:2px;overflow:hidden;}
+  .node-mini-fill{height:100%;}
+  .legend{display:flex;gap:16px;margin-top:14px;flex-wrap:wrap;}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;}
+  .legend-dot{width:8px;height:8px;border-radius:2px;}
+  .formula-note{font-size:11.5px;color:var(--text-faint);margin-top:10px;line-height:1.6;border-top:1px solid var(--border-soft);padding-top:10px;}
+  .formula-note code{color:var(--text-dim);background:var(--panel-2);padding:1px 5px;border-radius:3px;}
+
+  .disclaimer{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:10px;padding:12px 14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;margin-bottom:16px;}
+  .disclaimer b{color:var(--amber);}
+
+  .net-panel{margin-top:16px;}
+  .mode-tabs{display:flex;gap:8px;margin-bottom:18px;}
+  .mode-tab{flex:1;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.12s;}
+  .mode-tab.active{border-color:var(--red);background:var(--red-dim);}
+  .mode-tab .mt-title{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:var(--text);}
+  .mode-tab .mt-sub{font-size:10.5px;color:var(--text-faint);margin-top:3px;}
+
+  .rack-viz{display:flex;gap:10px;margin:14px 0;flex-wrap:wrap;}
+  .rack-box{flex:1;min-width:110px;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;}
+  .rack-box .rid{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--red);margin-bottom:4px;letter-spacing:.05em;}
+  .rack-box .az{font-size:12px;color:var(--text-dim);}
+
+  .net-results{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px;}
+  .net-result-card{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px;}
+  .net-result-card .csp-name{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+  .net-result-card .cost{font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:600;}
+  .net-result-card .gb{font-size:11px;color:var(--text-dim);margin-top:3px;}
+  .rate-inputs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;}
+  .rate-inputs .field label{font-size:10.5px;}
+
+  .csp-panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;margin-top:16px;}
+  .csp-add-row{display:grid;grid-template-columns:1fr 1fr 1fr 90px 120px;gap:8px;align-items:end;margin-top:14px;}
+  @media (max-width:940px){.csp-add-row{grid-template-columns:1fr 1fr;}}
+  .csp-add-row .field{margin-bottom:0;}
+  .csp-add-row label{font-size:10.5px;}
+  .add-btn{background:var(--red);color:#0A0A0C;border:none;border-radius:8px;padding:10px 10px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;cursor:pointer;}
+  .add-btn:hover{opacity:.88;}
+
+  .compare-table{width:100%;border-collapse:collapse;margin-top:18px;font-size:12.5px;}
+  .compare-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);padding:6px 10px;border-bottom:1px solid var(--border);font-weight:600;}
+  .compare-table td{padding:12px 10px;border-bottom:1px solid var(--border-soft);vertical-align:top;}
+  .csp-group-row td{padding:14px 10px 6px;border-bottom:none;}
+  .csp-group-row:not(:first-child) td{padding-top:22px;border-top:1px solid var(--border);}
+  .csp-group-label{font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border:1px solid;border-radius:20px;padding:3px 10px;}
+  .csp-group-count{font-size:11px;color:var(--text-faint);margin-left:10px;}
+  .compare-table tr:last-child td{border-bottom:none;}
+  .row-instance{font-family:'IBM Plex Mono',monospace;font-weight:600;}
+  .row-csp-tag{display:inline-block;font-size:9.5px;font-family:'IBM Plex Mono',monospace;padding:2px 6px;border-radius:3px;margin-right:6px;text-transform:uppercase;letter-spacing:.04em;}
+  .price-source{font-size:9.5px;font-family:'IBM Plex Mono',monospace;padding:1px 6px;border-radius:10px;margin-left:6px;}
+  .price-live{color:var(--green);border:1px solid var(--green);}
+  .price-ref{color:var(--text-faint);border:1px solid var(--border);}
+  .row-cost{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px;}
+  .row-cost .per-mo{font-size:10px;color:var(--text-faint);font-weight:400;display:block;}
+  .row-cost .breakdown{font-size:10px;color:var(--text-dim);font-weight:400;margin-top:3px;}
+  .fit-badge{font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:3px 9px;border-radius:20px;border:1px solid;display:inline-block;white-space:nowrap;}
+  .fit-ok{color:var(--green);border-color:var(--green);background:rgba(52,211,153,.08);}
+  .fit-tight{color:var(--amber);border-color:var(--amber);background:rgba(251,191,36,.08);}
+  .fit-bad{color:var(--bad);border-color:var(--bad);background:rgba(251,91,91,.08);}
+  .fit-detail{font-size:10.5px;color:var(--text-faint);margin-top:4px;max-width:230px;}
+  .qty-input{width:56px;background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:6px 7px;border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;text-align:center;}
+  .remove-btn{background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;}
+  .remove-btn:hover{color:var(--bad);}
+  .refresh-btn{background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:12px;padding:2px 4px;}
+  .refresh-btn:hover{color:var(--blue);}
+  .empty-compare{color:var(--text-faint);font-size:12.5px;padding:24px 0;text-align:center;}
+  .loading-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand-row">
+      <span class="brand-mark"></span>
+      <span class="brand-eyebrow">// capacity &amp; cost planning</span>
+    </div>
+    <h1>Aerospike Cluster Sizer</h1>
+    <p>Size a cluster from your data volume and throughput, compare real cost across CSPs and regions, and model replication network traffic — cross-AZ or cross-region via XDR.</p>
+    <div class="steps">
+      <span class="step-pill"><b>1</b> Workload profile</span>
+      <span class="step-pill"><b>2</b> Node sizing</span>
+      <span class="step-pill"><b>3</b> Network topology</span>
+      <span class="step-pill"><b>4</b> CSP comparator &amp; total cost</span>
+    </div>
+  </header>
+
+  <div class="disclaimer">
+    <b>Data sourcing.</b> Hardware specs (vCPU/RAM/NVMe/IOPS): manually curated reference dataset, stable over time. Pricing: <b>AWS</b> and <b>Azure</b> are queried live from your browser (ec2.shop for AWS, the official public Azure Retail Prices API) each time a row is added; on network or CORS failure, the tool silently falls back to the reference price (grey badge). <b>GCP</b> has no reliable free public equivalent — stays on reference pricing, refreshable on request. Cross-AZ/cross-region network rates: editable estimates — verify against your CSP's official calculator before any budget decision.
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <h2>Data profile</h2>
+        <div class="field">
+          <label>Average object size <span class="hint">bytes</span></label>
+          <input type="number" id="objSize" value="1024" min="1">
+        </div>
+        <div class="field">
+          <label>Number of objects <span class="hint">records</span></label>
+          <input type="number" id="numObjects" value="500000000" min="1">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Reads/s</label>
+            <input type="number" id="readsPerSec" value="200000" min="0">
+          </div>
+          <div class="field">
+            <label>Writes/s</label>
+            <input type="number" id="writesPerSec" value="40000" min="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>Replication factor</label>
+          <div class="toggle-row" id="rfToggle">
+            <button class="toggle-btn" data-val="1">RF1</button>
+            <button class="toggle-btn active" data-val="2">RF2</button>
+            <button class="toggle-btn" data-val="3">RF3</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Storage engine</label>
+          <div class="toggle-row" id="engineToggle">
+            <button class="toggle-btn active" data-val="device">Device (SSD)</button>
+            <button class="toggle-btn" data-val="memory">Memory (RAM)</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Target growth (12-18 months) <span class="hint">%</span></label>
+          <input type="number" id="growth" value="30" min="0">
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Generic node profile</h2>
+        <div class="subhead">Used for the first node-count estimate, independent of any CSP. Refine it afterwards in the comparator.</div>
+        <div class="field-row">
+          <div class="field">
+            <label>RAM/node <span class="hint">GB</span></label>
+            <input type="number" id="ramPerNode" value="128" min="1">
+          </div>
+          <div class="field">
+            <label>Usable storage/node <span class="hint">TB</span></label>
+            <input type="number" id="storagePerNode" value="3.5" min="0.1" step="0.1">
+          </div>
+        </div>
+        <div class="field">
+          <label>Sustained IOPS/node <span class="hint">device, write-bound</span></label>
+          <input type="number" id="iopsPerNode" value="200000" min="1000">
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Advanced assumptions</h2>
+        <details>
+          <summary>▸ index overhead, defrag, cache — adjust</summary>
+          <div style="margin-top:12px;">
+            <div class="field">
+              <label>Primary index <span class="hint">bytes/record in RAM</span></label>
+              <input type="number" id="idxBytes" value="64" min="16">
+            </div>
+            <div class="field">
+              <label>Write-block overhead <span class="hint">%</span></label>
+              <input type="number" id="wbOverhead" value="10" min="0">
+            </div>
+            <div class="field">
+              <label>Defrag/compaction multiplier <span class="hint">×device writes</span></label>
+              <input type="number" id="defragMult" value="1.3" min="1" step="0.05">
+            </div>
+            <div class="field">
+              <label>Reads absorbed by cache (post-write-queue) <span class="hint">%, device only</span></label>
+              <input type="number" id="cacheHit" value="70" min="0" max="100">
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <div>
+      <div class="hero-result">
+        <div class="node-count" id="nodeCount">—<small>nodes</small></div>
+        <div class="hero-meta">
+          <div class="constraint-tag" id="constraintTag">calculating…</div>
+          <p id="constraintText">Fill in the data profile to run the sizing.</p>
+        </div>
+      </div>
+
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="label">Storage</div>
+          <div class="value" id="storageVal">—</div>
+          <div class="subvalue" id="storageSub">—</div>
+          <div class="bar-track"><div class="bar-fill" id="storageBar" style="background:var(--green);width:0%"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="label">RAM</div>
+          <div class="value" id="ramVal">—</div>
+          <div class="subvalue" id="ramSub">—</div>
+          <div class="bar-track"><div class="bar-fill" id="ramBar" style="background:var(--amber);width:0%"></div></div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Device IOPS</div>
+          <div class="value" id="iopsVal">—</div>
+          <div class="subvalue" id="iopsSub">—</div>
+          <div class="bar-track"><div class="bar-fill" id="iopsBar" style="background:var(--bad);width:0%"></div></div>
+        </div>
+      </div>
+
+      <div class="node-grid-panel">
+        <h2>Cluster topology</h2>
+        <div class="node-grid" id="nodeGrid"></div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--green);"></div>storage</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--amber);"></div>ram</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--bad);"></div>iops</div>
+        </div>
+        <div class="formula-note">
+          Formulas — Total storage = <code>size × objects × RF × (1 + WB overhead)</code>. RAM = <code>index (64B/record × RF)</code> on storage-engine device, or <code>data + index</code> in memory mode. Device IOPS = <code>writes/s × RF × defrag</code> + <code>reads/s × (1 − cache hit)</code> if device. Nodes = max(storage, ram, iops) with growth margin applied to storage/ram.
+        </div>
+      </div>
+
+      <div class="panel net-panel">
+        <h2>Network topology &amp; replication</h2>
+        <div class="subhead">Cost of the traffic generated by replication — cross-AZ within a region, or cross-region via XDR.</div>
+
+        <div class="mode-tabs" id="modeTabs">
+          <div class="mode-tab active" data-mode="az">
+            <div class="mt-title">Single-region · multi-AZ</div>
+            <div class="mt-sub">RF replication across availability zones</div>
+          </div>
+          <div class="mode-tab" data-mode="region">
+            <div class="mt-title">Multi-region · XDR</div>
+            <div class="mt-sub">Cross Datacenter Replication across regions</div>
+          </div>
+        </div>
+
+        <div id="azModeFields">
+          <div class="field-row3">
+            <div class="field">
+              <label>Number of AZs</label>
+              <div class="toggle-row" id="azCountToggle">
+                <button class="toggle-btn" data-val="1">1 AZ</button>
+                <button class="toggle-btn" data-val="2">2 AZ</button>
+                <button class="toggle-btn active" data-val="3">3 AZ</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>Rack-awareness</label>
+              <div class="switch-row" style="padding-top:8px;">
+                <span class="switch-label">1 rack ID per AZ</span>
+                <label class="switch"><input type="checkbox" id="rackAwareToggle" checked><span class="slider"></span></label>
+              </div>
+            </div>
+            <div class="field">
+              <label>Active-rack (local read)</label>
+              <div class="switch-row" style="padding-top:8px;">
+                <span class="switch-label">Client prefers the local replica</span>
+                <label class="switch"><input type="checkbox" id="activeRackToggle" checked><span class="slider"></span></label>
+              </div>
+            </div>
+          </div>
+          <div class="field-row" id="clientPlacementRow">
+            <div class="field">
+              <label>Client placement</label>
+              <div class="toggle-row" id="clientPlacementToggle">
+                <button class="toggle-btn active" data-val="distributed">Distributed (1 per AZ)</button>
+                <button class="toggle-btn" data-val="single">Single location</button>
+              </div>
+            </div>
+            <div class="field" id="residualField">
+              <label>Residual cross-AZ read rate (fallback / rebalance) <span class="hint">%</span></label>
+              <input type="number" id="residualPct" value="3" min="0" max="100">
+            </div>
+          </div>
+          <div class="rack-viz" id="rackViz"></div>
+          <div id="rfAzWarning"></div>
+        </div>
+
+        <div id="regionModeFields" style="display:none;">
+          <div class="field-row3">
+            <div class="field">
+              <label>Number of regions</label>
+              <div class="toggle-row" id="numRegionsToggle">
+                <button class="toggle-btn active" data-val="2">2</button>
+                <button class="toggle-btn" data-val="3">3</button>
+                <button class="toggle-btn" data-val="4">4</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>XDR topology</label>
+              <div class="toggle-row" id="xdrTopoToggle">
+                <button class="toggle-btn active" data-val="mesh">Active-active (mesh)</button>
+                <button class="toggle-btn" data-val="hub">Hub-spoke</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>XDR compression</label>
+              <div class="switch-row" style="padding-top:8px;">
+                <span class="switch-label">Reduces volume shipped</span>
+                <label class="switch"><input type="checkbox" id="xdrCompressToggle" checked><span class="slider"></span></label>
+              </div>
+            </div>
+          </div>
+          <div class="field" id="compressionRatioField">
+            <label>Compression ratio <span class="hint">% of volume saved</span></label>
+            <input type="number" id="compressionRatio" value="50" min="0" max="90">
+          </div>
+        </div>
+
+        <div class="formula-note" id="netFormulaNote"></div>
+
+        <div class="rate-inputs">
+          <div class="field">
+            <label>AWS <span class="hint" id="awsRateLabel">$/GB cross-AZ</span></label>
+            <input type="number" id="rateAws" value="0.02" min="0" step="0.001">
+          </div>
+          <div class="field">
+            <label>GCP <span class="hint" id="gcpRateLabel">$/GB cross-AZ</span></label>
+            <input type="number" id="rateGcp" value="0.01" min="0" step="0.001">
+          </div>
+          <div class="field">
+            <label>Azure <span class="hint" id="azureRateLabel">$/GB cross-AZ</span></label>
+            <input type="number" id="rateAzure" value="0.02" min="0" step="0.001">
+          </div>
+        </div>
+        <div class="formula-note">These rates should reflect the fully-loaded cost per GB moved, combining both line items where a CSP bills egress and ingress separately (e.g. AWS/Azure historically charge both directions for cross-AZ traffic, hence 0.02 default; GCP has historically billed egress only, hence 0.01). Verify current billing behavior for your CSP before trusting these defaults.</div>
+
+        <div class="net-results" id="netResults"></div>
+      </div>
+
+      <div class="csp-panel">
+        <h2>CSP comparator — sizing, price &amp; network</h2>
+        <div class="subhead">Pre-filled with the smallest instance per CSP that fits the per-node requirement above, at the recommended node count. Adjust freely — region, instance, quantity — or add more rows to compare.</div>
+        <div class="csp-add-row">
+          <div class="field">
+            <label>Cloud provider</label>
+            <select id="cspSelect">
+              <option value="aws">AWS</option>
+              <option value="gcp">Google Cloud</option>
+              <option value="azure">Microsoft Azure</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Region</label>
+            <select id="regionSelect"></select>
+          </div>
+          <div class="field">
+            <label>Instance type</label>
+            <select id="instanceSelect"></select>
+          </div>
+          <div class="field">
+            <label>Nodes</label>
+            <input type="number" id="qtyInput" value="1" min="1">
+          </div>
+          <button class="add-btn" id="addRowBtn">+ Compare</button>
+        </div>
+
+        <table class="compare-table" id="compareTable">
+          <thead>
+            <tr>
+              <th>Configuration</th>
+              <th>Total resources</th>
+              <th>Fit</th>
+              <th>Cost (compute + network)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="compareBody"></tbody>
+        </table>
+        <div class="empty-compare" id="emptyCompare">Add a configuration to compare price and fit against the requirement calculated above.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let state = { rf: 2, engine: 'device' };
+let net = {
+  mode: 'az',
+  azCount: 3, rackAware: true, activeRack: true, residualPct: 3, clientPlacement: 'distributed',
+  numRegions: 2, xdrTopo: 'mesh', xdrCompress: true, compressionRatio: 50,
+  rates: { aws: 0.02, gcp: 0.01, azure: 0.02 },
+};
+
+document.querySelectorAll('#rfToggle .toggle-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#rfToggle .toggle-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.rf = parseInt(btn.dataset.val);
+    compute();
+  });
+});
+document.querySelectorAll('#engineToggle .toggle-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#engineToggle .toggle-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.engine = btn.dataset.val;
+    compute();
+  });
+});
+document.querySelectorAll('input[type=number]').forEach(inp=>{
+  inp.addEventListener('input', compute);
+});
+
+document.querySelectorAll('#modeTabs .mode-tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('#modeTabs .mode-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    net.mode = tab.dataset.mode;
+    $('azModeFields').style.display = net.mode==='az' ? 'block' : 'none';
+    $('regionModeFields').style.display = net.mode==='region' ? 'block' : 'none';
+    const rateLabel = net.mode==='az' ? '$/GB cross-AZ' : '$/GB cross-region';
+    $('awsRateLabel').textContent = rateLabel;
+    $('gcpRateLabel').textContent = rateLabel;
+    $('azureRateLabel').textContent = rateLabel;
+    compute();
+  });
+});
+function refreshResidualVisibility(){
+  if(net.azCount === 1) return; // fields already hidden
+  const tier3 = net.rackAware && net.activeRack;
+  $('clientPlacementRow').style.display = tier3 ? 'flex' : 'none';
+  $('residualField').style.display = (tier3 && net.clientPlacement==='single') ? 'block' : 'none';
+}
+function updateAzDependentUI(){
+  const rackToggle = $('rackAwareToggle');
+  const activeToggle = $('activeRackToggle');
+  if(net.azCount === 1){
+    rackToggle.checked = false; rackToggle.disabled = true; net.rackAware = false;
+    activeToggle.checked = false; activeToggle.disabled = true; net.activeRack = false;
+    $('residualField').style.display = 'none';
+    $('clientPlacementRow').style.display = 'none';
+  } else {
+    rackToggle.disabled = false;
+    if(!rackToggle.checked){ rackToggle.checked = true; net.rackAware = true; }
+    activeToggle.disabled = !net.rackAware;
+    if(net.rackAware && !activeToggle.checked){ activeToggle.checked = true; net.activeRack = true; }
+    refreshResidualVisibility();
+  }
+}
+document.querySelectorAll('#clientPlacementToggle .toggle-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#clientPlacementToggle .toggle-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    net.clientPlacement = btn.dataset.val;
+    refreshResidualVisibility();
+    compute();
+  });
+});
+document.querySelectorAll('#azCountToggle .toggle-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#azCountToggle .toggle-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    net.azCount = parseInt(btn.dataset.val);
+    updateAzDependentUI();
+    compute();
+  });
+});
+document.querySelectorAll('#numRegionsToggle .toggle-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#numRegionsToggle .toggle-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    net.numRegions = parseInt(btn.dataset.val);
+    compute();
+  });
+});
+document.querySelectorAll('#xdrTopoToggle .toggle-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#xdrTopoToggle .toggle-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    net.xdrTopo = btn.dataset.val;
+    compute();
+  });
+});
+$('rackAwareToggle').addEventListener('change', e=>{
+  net.rackAware = e.target.checked;
+  $('activeRackToggle').disabled = !net.rackAware;
+  if(!net.rackAware){ $('activeRackToggle').checked = false; net.activeRack = false; }
+  refreshResidualVisibility();
+  compute();
+});
+$('activeRackToggle').addEventListener('change', e=>{ net.activeRack = e.target.checked; refreshResidualVisibility(); compute(); });
+$('xdrCompressToggle').addEventListener('change', e=>{ net.xdrCompress = e.target.checked; compute(); });
+['residualPct','compressionRatio','rateAws','rateGcp','rateAzure'].forEach(id=>{
+  $(id).addEventListener('input', ()=>{
+    net.residualPct = parseFloat($('residualPct').value)||0;
+    net.compressionRatio = parseFloat($('compressionRatio').value)||0;
+    net.rates.aws = parseFloat($('rateAws').value)||0;
+    net.rates.gcp = parseFloat($('rateGcp').value)||0;
+    net.rates.azure = parseFloat($('rateAzure').value)||0;
+    compute();
+  });
+});
+
+function fmtBytes(bytes){
+  if(bytes===0) return '0 B';
+  const units=['B','KB','MB','GB','TB','PB'];
+  let i=Math.floor(Math.log(bytes)/Math.log(1024));
+  i=Math.min(i, units.length-1);
+  return (bytes/Math.pow(1024,i)).toFixed(2)+' '+units[i];
+}
+function fmtNum(n){ return Math.round(n).toLocaleString('en-US'); }
+function fmtUSD(n){ return '$'+n.toLocaleString('en-US', {maximumFractionDigits:0}); }
+
+let lastRequirement = null;
+let lastFinalNodes = null;
+let lastNetworkResult = null;
+
+function computeNetwork(){
+  const readsPerSec = parseFloat($('readsPerSec').value)||0;
+  const writesPerSec = parseFloat($('writesPerSec').value)||0;
+  const objSize = parseFloat($('objSize').value)||0;
+  const rf = state.rf;
+  const SECONDS_PER_MONTH = 730*3600; // aligned with the 730h/month used for compute cost
+
+  let bytesPerSecByComponent = {};
+  let note = '';
+
+  if(net.mode==='az'){
+    if(net.azCount === 1){
+      bytesPerSecByComponent = { write: 0, read: 0 };
+      note = "Single-AZ deployment: replicas are spread across nodes only, not zones — there is no cross-AZ boundary to cross, so replication traffic stays on the intra-zone network. Network cost is $0, but there is no zone-level fault tolerance.";
+    } else {
+      const clientToMasterFraction = (net.azCount-1)/net.azCount; // partition master is fixed by key hash — never rack-pinned, so this applies to writes in every tier below
+      let writeCrossAZ, readCrossAZ, note2;
+
+      if(!net.rackAware){
+        // Tier 1: no rack-awareness — placement is effectively random cluster-wide, for both reads and the write's client→master hop
+        writeCrossAZ = writesPerSec * objSize * (clientToMasterFraction + Math.max(0, rf-1));
+        readCrossAZ = readsPerSec * objSize * clientToMasterFraction;
+        note2 = "No rack-awareness: partition placement ignores AZ boundaries, so both the client→master hop (writes) and the client→serving-node hop (reads) land off-AZ with probability (AZ count−1)/AZ count = " + Math.round(clientToMasterFraction*100) + "%, regardless of client placement. Writes additionally replicate (RF−1) times cross-AZ, always.";
+      } else if(!net.activeRack){
+        // Tier 2: rack-aware placement + per-client local-read preference (each client reads from its own co-located rack when possible)
+        writeCrossAZ = writesPerSec * objSize * (clientToMasterFraction + Math.max(0, rf-1));
+        const localHitRate = Math.min(1, rf/net.azCount);
+        const readCrossFraction = 1 - localHitRate;
+        readCrossAZ = readsPerSec * objSize * readCrossFraction;
+        note2 = "Rack-aware placement, per-client local read: writes are unaffected by rack-awareness (master ownership isn't rack-pinned), so the client→master hop stays (AZ count−1)/AZ count, plus (RF−1) replication. Reads hit a local replica when this client's rack is among the RF racks holding one: local rate = min(1, RF/AZ count) = " + Math.round(localHitRate*100) + "%, so " + Math.round(readCrossFraction*100) + "% of reads cross AZ" + (rf>=net.azCount ? " — fully local since RF ≥ AZ count." : ".");
+      } else {
+        // Tier 3: rack-aware + Active Rack (Aerospike EE 7.2.0+) — the designated rack-id holds ALL master
+        // partition copies; replicas (RF−1) always sit on the other racks by construction. Requires AZ count ≤ RF
+        // to take effect (see rfAzWarning below for the constraint check).
+        if(net.clientPlacement === 'single'){
+          writeCrossAZ = writesPerSec * objSize * Math.max(0, rf-1);
+          readCrossAZ = readsPerSec * objSize * (net.residualPct/100);
+          note2 = "Active Rack pins every master partition onto one designated rack (Aerospike EE 7.2.0+). Clients co-located with that rack hit the local master for both reads and writes, so writes only pay the mandatory (RF−1) replica fan-out to the other racks, and reads use the residual fallback rate (" + net.residualPct + "%, rebalance/failover).";
+        } else {
+          writeCrossAZ = writesPerSec * objSize * (clientToMasterFraction + Math.max(0, rf-1));
+          readCrossAZ = readsPerSec * objSize * clientToMasterFraction;
+          note2 = "Active Rack pins every master onto one rack, but clients are distributed across AZs — only the fraction physically co-located with the active rack gets a local hit. Averaged across all clients this lands close to the no-affinity baseline: (AZ count−1)/AZ count cross-AZ on both the client→master hop and reads, plus the mandatory (RF−1) replication on writes.";
+        }
+      }
+      bytesPerSecByComponent = { write: writeCrossAZ, read: readCrossAZ };
+      note = note2;
+    }
+  } else {
+    const factor = net.xdrTopo==='mesh' ? (net.numRegions-1) : 1;
+    let xdrBytes = writesPerSec * objSize * factor;
+    if(net.xdrCompress) xdrBytes *= (1 - net.compressionRatio/100);
+    bytesPerSecByComponent = { xdr: xdrBytes };
+    note = "XDR volume = writes/s × size × " + (net.xdrTopo==='mesh' ? "(regions−1) [active-active mesh, each write ships to every other region]" : "1 [hub-spoke, a single hop to the hub]") + (net.xdrCompress ? ' × (1 − compression)' : '') + ".";
+  }
+
+  const totalBytesPerSec = Object.values(bytesPerSecByComponent).reduce((a,b)=>a+b,0);
+  const monthlyGB = totalBytesPerSec * SECONDS_PER_MONTH / 1e9;
+
+  const costs = {};
+  ['aws','gcp','azure'].forEach(k=>{ costs[k] = monthlyGB * net.rates[k]; });
+
+  return { monthlyGB, costs, note, totalBytesPerSec };
+}
+
+function renderNetworkPanel(netResult){
+  $('netFormulaNote').textContent = netResult.note;
+
+  const rv = $('rackViz');
+  rv.innerHTML='';
+  const azLetters = ['a','b','c','d'];
+  for(let i=0;i<net.azCount;i++){
+    const box = document.createElement('div');
+    box.className='rack-box';
+    box.innerHTML = '<div class="rid">RACK-ID ' + i + '</div><div class="az">AZ-' + azLetters[i] + '</div>';
+    rv.appendChild(box);
+  }
+  rv.style.display = net.mode==='az' ? 'flex' : 'none';
+
+  const warnBox = $('rfAzWarning');
+  if(net.mode==='az' && net.azCount === 1){
+    warnBox.innerHTML = '<div class="warn-box">Single-AZ topology: replicas are distributed across nodes only, not zones. This protects against node failure but not an availability-zone outage. Cross-AZ network cost is $0.</div>';
+  } else if(net.mode==='az' && net.rackAware && net.activeRack && net.azCount > state.rf){
+    warnBox.innerHTML = '<div class="warn-box">Active Rack requires AZ count ≤ RF to take effect (Aerospike EE 7.2.0+ constraint) — currently ' + net.azCount + ' AZ(s) &gt; RF' + state.rf + '. As configured, Active Rack would not actually engage; increase RF to at least ' + net.azCount + ', or reduce the AZ count, for the numbers below to be trustworthy.</div>';
+  } else if(net.mode==='az' && state.rf > net.azCount){
+    warnBox.innerHTML = '<div class="warn-box">RF' + state.rf + ' &gt; ' + net.azCount + ' configured AZ(s): at least one rack will host multiple replicas of the same record, reducing real fault tolerance. Align the AZ count with the RF, or lower the RF.</div>';
+  } else {
+    warnBox.innerHTML = '';
+  }
+
+  const csps = [{k:'aws',label:'AWS'},{k:'gcp',label:'Google Cloud'},{k:'azure',label:'Microsoft Azure'}];
+  $('netResults').innerHTML = csps.map(c=>
+    '<div class="net-result-card">' +
+      '<div class="csp-name">' + c.label + '</div>' +
+      '<div class="cost">' + fmtUSD(netResult.costs[c.k]) + '<span style="font-size:10px;color:var(--text-faint);font-weight:400;">/mo</span></div>' +
+      '<div class="gb">' + netResult.monthlyGB.toFixed(1) + ' GB/mo × $' + net.rates[c.k] + '/GB</div>' +
+    '</div>'
+  ).join('');
+}
+
+function compute(){
+  const objSize = parseFloat($('objSize').value)||0;
+  const numObjects = parseFloat($('numObjects').value)||0;
+  const readsPerSec = parseFloat($('readsPerSec').value)||0;
+  const writesPerSec = parseFloat($('writesPerSec').value)||0;
+  const growth = (parseFloat($('growth').value)||0)/100;
+
+  const ramPerNodeGB = parseFloat($('ramPerNode').value)||1;
+  const storagePerNodeTB = parseFloat($('storagePerNode').value)||0.1;
+  const iopsPerNode = parseFloat($('iopsPerNode').value)||1000;
+
+  const idxBytes = parseFloat($('idxBytes').value)||64;
+  const wbOverhead = (parseFloat($('wbOverhead').value)||0)/100;
+  const defragMult = parseFloat($('defragMult').value)||1.3;
+  const cacheHit = (parseFloat($('cacheHit').value)||0)/100;
+
+  const rf = state.rf;
+  const engine = state.engine;
+
+  const totalRecordsRF = numObjects * rf;
+  const rawDataBytes = objSize * totalRecordsRF;
+  const storageWithOverhead = rawDataBytes * (1+wbOverhead) * (1+growth);
+  const storagePerNodeBytes = storagePerNodeTB * 1e12;
+  const nodesByStorage = engine==='device' ? Math.ceil(storageWithOverhead / storagePerNodeBytes) : 0;
+
+  let ramNeeded;
+  if(engine==='device'){
+    ramNeeded = totalRecordsRF * idxBytes * (1+growth);
+  } else {
+    ramNeeded = (rawDataBytes*(1+wbOverhead) + totalRecordsRF*idxBytes) * (1+growth);
+  }
+  const ramPerNodeBytes = ramPerNodeGB * 1e9;
+  const nodesByRAM = Math.ceil(ramNeeded / ramPerNodeBytes);
+
+  const writeIOPS = writesPerSec * rf * defragMult;
+  const readIOPSToDevice = engine==='device' ? readsPerSec*(1-cacheHit) : 0;
+  const totalDeviceIOPS = writeIOPS + readIOPSToDevice;
+  const nodesByIOPS = Math.ceil(totalDeviceIOPS / iopsPerNode);
+
+  const minTopology = rf+1;
+  let finalNodes = Math.max(nodesByStorage, nodesByRAM, nodesByIOPS, minTopology);
+  if(!isFinite(finalNodes) || finalNodes<1) finalNodes = minTopology;
+
+  const candidates = [
+    {k:'storage', v:nodesByStorage, c:'var(--green)', label:'STORAGE-BOUND'},
+    {k:'ram', v:nodesByRAM, c:'var(--amber)', label:'RAM-BOUND'},
+    {k:'iops', v:nodesByIOPS, c:'var(--bad)', label:'IOPS-BOUND'},
+  ];
+  candidates.sort((a,b)=>b.v-a.v);
+  const top = candidates[0];
+  let binding, bindColor;
+  if (finalNodes === minTopology && top.v < minTopology){ binding = 'topology'; bindColor='var(--blue)'; }
+  else { binding = top.k; bindColor = top.c; }
+
+  $('nodeCount').innerHTML = finalNodes + '<small>nodes (RF'+rf+')</small>';
+  const tag = $('constraintTag');
+  const tagLabels = {storage:'STORAGE-BOUND', ram:'RAM-BOUND', iops:'IOPS-BOUND', topology:'MIN TOPOLOGY (RF+1)'};
+  tag.textContent = tagLabels[binding];
+  tag.style.color = bindColor;
+  tag.style.borderColor = bindColor;
+
+  const textMap = {
+    storage: 'Disk storage drives the sizing — ' + fmtBytes(storageWithOverhead) + ' to distribute (RF' + rf + ', ' + Math.round(growth*100) + '% growth margin included) across nodes with ' + storagePerNodeTB + 'TB usable.',
+    ram: "The primary index in RAM drives the sizing — " + fmtBytes(ramNeeded) + ' needed across nodes with ' + ramPerNodeGB + 'GB.',
+    iops: 'Device throughput drives the sizing — ' + fmtNum(totalDeviceIOPS) + ' sustained IOPS required vs ' + fmtNum(iopsPerNode) + ' IOPS/node.',
+    topology: 'Storage, RAM and IOPS are comfortably covered below RF+1 — the topology floor (RF+1 = ' + minTopology + ') sets this minimum for fault tolerance.',
+  };
+  $('constraintText').textContent = textMap[binding];
+
+  $('storageVal').textContent = engine==='device' ? fmtBytes(storageWithOverhead) : '—';
+  $('storageSub').textContent = engine==='device' ? (nodesByStorage + ' nodes required · ' + fmtBytes(storagePerNodeBytes) + ' usable/node') : 'n/a in memory mode';
+  $('storageBar').style.width = (engine==='device' ? Math.min(100,(nodesByStorage/finalNodes)*100) : 0)+'%';
+
+  $('ramVal').textContent = fmtBytes(ramNeeded);
+  $('ramSub').textContent = nodesByRAM + ' nodes required · ' + ramPerNodeGB + 'GB/node';
+  $('ramBar').style.width = Math.min(100,(nodesByRAM/finalNodes)*100)+'%';
+
+  $('iopsVal').textContent = fmtNum(totalDeviceIOPS)+' iops';
+  $('iopsSub').textContent = nodesByIOPS + ' nodes required · ' + fmtNum(iopsPerNode) + ' iops/node';
+  $('iopsBar').style.width = Math.min(100,(nodesByIOPS/finalNodes)*100)+'%';
+
+  const grid = $('nodeGrid');
+  grid.innerHTML = '';
+  const storageUtilPerNode = engine==='device' ? Math.min(100, (storageWithOverhead/finalNodes)/storagePerNodeBytes*100) : 8;
+  const ramUtilPerNode = Math.min(100, (ramNeeded/finalNodes)/ramPerNodeBytes*100);
+  const iopsUtilPerNode = Math.min(100, (totalDeviceIOPS/finalNodes)/iopsPerNode*100);
+  for(let i=0;i<finalNodes;i++){
+    const box = document.createElement('div');
+    box.className='node-box';
+    box.innerHTML =
+      '<div class="nid">N' + String(i+1).padStart(2,'0') + '</div>' +
+      '<div class="node-mini-bar"><div class="node-mini-fill" style="width:' + storageUtilPerNode + '%;background:var(--green);"></div></div>' +
+      '<div class="node-mini-bar"><div class="node-mini-fill" style="width:' + ramUtilPerNode + '%;background:var(--amber);"></div></div>' +
+      '<div class="node-mini-bar"><div class="node-mini-fill" style="width:' + iopsUtilPerNode + '%;background:var(--bad);"></div></div>';
+    grid.appendChild(box);
+  }
+
+  lastRequirement = { engine, rf, minTopology, storageWithOverhead, ramNeeded, totalDeviceIOPS };
+  lastFinalNodes = finalNodes;
+
+  const qtyField = document.getElementById('qtyInput');
+  if (qtyField && document.activeElement !== qtyField) qtyField.value = finalNodes;
+
+  const netResult = computeNetwork();
+  renderNetworkPanel(netResult);
+  lastNetworkResult = netResult;
+
+  if (typeof refreshAutoRows === 'function') refreshAutoRows();
+  if (typeof ensureTightAlternatives === 'function') ensureTightAlternatives();
+  if (typeof renderCompareTable === 'function') renderCompareTable();
+}
+
+const CSP_DATA = {
+  aws: {
+    label:'AWS', tag:'AWS', color:'#FF9900',
+    regions:[
+      {id:'us-east-1', label:'us-east-1 · N. Virginia'},
+      {id:'us-west-2', label:'us-west-2 · Oregon'},
+      {id:'eu-west-1', label:'eu-west-1 · Ireland'},
+      {id:'eu-west-3', label:'eu-west-3 · Paris'},
+      {id:'eu-central-1', label:'eu-central-1 · Frankfurt'},
+      {id:'ap-southeast-1', label:'ap-southeast-1 · Singapore'},
+      {id:'ap-southeast-3', label:'ap-southeast-3 · Jakarta'},
+      {id:'ap-northeast-1', label:'ap-northeast-1 · Tokyo'},
+      {id:'sa-east-1', label:'sa-east-1 · São Paulo'},
+    ],
+    instances:[
+      {id:'i4i.large',   vcpu:2,  ram:16,  nvme:468,   iops:50000,  price:0.172},
+      {id:'i4i.xlarge',  vcpu:4,  ram:32,  nvme:937,   iops:100000, price:0.343},
+      {id:'i4i.2xlarge', vcpu:8,  ram:64,  nvme:1875,  iops:150000, price:0.686},
+      {id:'i4i.4xlarge', vcpu:16, ram:128, nvme:3750,  iops:200000, price:1.373},
+      {id:'i4i.8xlarge', vcpu:32, ram:256, nvme:7500,  iops:350000, price:2.746},
+      {id:'i4i.16xlarge',vcpu:64, ram:512, nvme:15000, iops:500000, price:5.491},
+    ],
+  },
+  gcp: {
+    label:'Google Cloud', tag:'GCP', color:'#4285F4',
+    regions:[
+      {id:'us-central1', label:'us-central1 · Iowa'},
+      {id:'us-west1', label:'us-west1 · Oregon'},
+      {id:'europe-west1', label:'europe-west1 · Belgium'},
+      {id:'europe-west9', label:'europe-west9 · Paris'},
+      {id:'europe-west3', label:'europe-west3 · Frankfurt'},
+      {id:'asia-southeast1', label:'asia-southeast1 · Singapore'},
+      {id:'asia-southeast2', label:'asia-southeast2 · Jakarta'},
+      {id:'asia-northeast1', label:'asia-northeast1 · Tokyo'},
+      {id:'southamerica-east1', label:'southamerica-east1 · São Paulo'},
+    ],
+    instances:[
+      {id:'z3-highmem-8-highlssd', vcpu:8,  ram:64,  nvme:3000,  iops:50000,  price:1.150},
+      {id:'z3-highmem-16-highlssd',vcpu:16, ram:128, nvme:6000,  iops:100000, price:2.300},
+      {id:'z3-highmem-22-highlssd',vcpu:22, ram:176, nvme:9000,  iops:140000, price:3.163},
+      {id:'z3-highmem-32-highlssd',vcpu:32, ram:256, nvme:12000, iops:200000, price:4.600},
+      {id:'z3-highmem-44-highlssd',vcpu:44, ram:352, nvme:18000, iops:275000, price:6.325},
+      {id:'z3-highmem-88-highlssd',vcpu:88, ram:704, nvme:36000, iops:550000, price:12.650},
+    ],
+  },
+  azure: {
+    label:'Microsoft Azure', tag:'AZURE', color:'#0078D4',
+    regions:[
+      {id:'eastus', label:'East US · Virginie'},
+      {id:'westus2', label:'West US 2 · Washington'},
+      {id:'westeurope', label:'West Europe · Netherlands'},
+      {id:'francecentral', label:'France Central · Paris'},
+      {id:'germanywestcentral', label:'Germany West Central · Frankfurt'},
+      {id:'southeastasia', label:'Southeast Asia · Singapore'},
+      {id:'japaneast', label:'Japan East · Tokyo'},
+      {id:'brazilsouth', label:'Brazil South · São Paulo'},
+    ],
+    instances:[
+      {id:'L8s_v3', vcpu:8,  ram:64,  nvme:1920,  iops:60000,  price:0.696},
+      {id:'L16s_v3',vcpu:16, ram:128, nvme:3840,  iops:120000, price:1.392},
+      {id:'L32s_v3',vcpu:32, ram:256, nvme:7680,  iops:240000, price:2.784},
+      {id:'L48s_v3',vcpu:48, ram:384, nvme:11520, iops:360000, price:4.176},
+      {id:'L64s_v3',vcpu:64, ram:512, nvme:15360, iops:480000, price:5.568},
+      {id:'L80s_v3',vcpu:80, ram:640, nvme:19200, iops:600000, price:6.960},
+    ],
+  },
+};
+
+let compareRows = [];
+
+function populateCspSelectors(){
+  const cspSel = $('cspSelect');
+  const regionSel = $('regionSelect');
+  const instSel = $('instanceSelect');
+
+  function refreshRegions(){
+    const csp = CSP_DATA[cspSel.value];
+    regionSel.innerHTML = csp.regions.map(r=>'<option value="'+r.id+'">'+r.label+'</option>').join('');
+  }
+  function refreshInstances(){
+    const csp = CSP_DATA[cspSel.value];
+    instSel.innerHTML = csp.instances.map(i=>'<option value="'+i.id+'">'+i.id+' — '+i.vcpu+'vCPU/'+i.ram+'GB/'+(i.nvme/1000).toFixed(1)+'TB</option>').join('');
+  }
+  cspSel.addEventListener('change', ()=>{ refreshRegions(); refreshInstances(); });
+  refreshRegions(); refreshInstances();
+
+  $('addRowBtn').addEventListener('click', async ()=>{
+    const cspKey = cspSel.value;
+    const csp = CSP_DATA[cspKey];
+    const region = csp.regions.find(r=>r.id===regionSel.value);
+    const instance = csp.instances.find(i=>i.id===instSel.value);
+    const qty = Math.max(1, parseInt($('qtyInput').value)||1);
+    const row = { id: Date.now()+Math.random(), cspKey, region, instance, qty, livePrice: null, priceSource: 'loading', auto:false };
+    compareRows.push(row);
+    renderCompareTable();
+    ensureTightAlternatives();
+    await fetchLivePrice(row);
+    renderCompareTable();
+  });
+}
+
+async function fetchLivePrice(row){
+  try{
+    if(row.cspKey === 'aws'){
+      const url = 'https://ec2.shop/?region=' + encodeURIComponent(row.region.id) + '&filter=' + encodeURIComponent(row.instance.id);
+      const res = await fetch(url, {headers:{accept:'application/json'}});
+      if(!res.ok) throw new Error('bad status');
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data.Prices || data.prices || data.data || data.Instances || data.instances || []);
+      const match = list.find(it => {
+        const t = it.InstanceType || it.instance_type || it.Instance || it.instance;
+        return t && String(t).toLowerCase() === row.instance.id.toLowerCase();
+      }) || list[0];
+      const price = match && (match.Price ?? match.price ?? match.OnDemand ?? match.onDemandPrice ?? (match.prices && match.prices.OnDemand));
+      if(price && !isNaN(parseFloat(price))){
+        row.livePrice = parseFloat(price);
+        row.priceSource = 'live';
+      } else { throw new Error('no matching price field'); }
+    } else if(row.cspKey === 'azure'){
+      const filter = "armRegionName eq '" + row.region.id + "' and armSkuName eq 'Standard_" + row.instance.id + "' and priceType eq 'Consumption'";
+      const url = 'https://prices.azure.com/api/retail/prices?$filter=' + encodeURIComponent(filter);
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('bad status');
+      const data = await res.json();
+      const items = (data.Items||[]).filter(it => it.currencyCode==='USD' && it.unitOfMeasure==='1 Hour' && !/windows/i.test(it.productName||''));
+      if(items.length===0) throw new Error('no items');
+      const min = items.reduce((a,b)=> (b.retailPrice < a.retailPrice ? b : a));
+      row.livePrice = min.retailPrice;
+      row.priceSource = 'live';
+    } else {
+      throw new Error('gcp: no free live source');
+    }
+  } catch(e){
+    row.livePrice = row.instance.price;
+    row.priceSource = 'reference';
+  }
+}
+
+function evaluateFit(row){
+  const req = lastRequirement;
+  const totalStorageBytes = row.qty * row.instance.nvme * 1e9;
+  const totalRamBytes = row.qty * row.instance.ram * 1e9;
+  const totalIops = row.qty * row.instance.iops;
+
+  const checks = [];
+  let worstStatus = 'ok';
+  const bump = s => { if(s==='bad') worstStatus='bad'; else if(s==='tight' && worstStatus!=='bad') worstStatus='tight'; };
+
+  if(row.qty < req.minTopology){
+    checks.push('Topology: ' + row.qty + " node(s) < RF+1 (" + req.minTopology + ' min).');
+    bump('bad');
+  }
+  if(net.mode==='az' && row.qty < net.azCount){
+    checks.push("Fewer nodes than configured AZs (" + net.azCount + ') — no real multi-AZ spread.');
+    bump('tight');
+  }
+  if(req.engine==='device'){
+    const pct = req.storageWithOverhead / totalStorageBytes;
+    if(pct > 1){ checks.push('Not enough storage: ' + fmtBytes(req.storageWithOverhead) + ' required vs ' + fmtBytes(totalStorageBytes) + ' available.'); bump('bad'); }
+    else if(pct > 0.85){ checks.push('Storage tight: ' + Math.round(pct*100) + '% utilization.'); bump('tight'); }
+  }
+  {
+    const pct = req.ramNeeded / totalRamBytes;
+    if(pct > 1){ checks.push('Not enough RAM: ' + fmtBytes(req.ramNeeded) + ' required vs ' + fmtBytes(totalRamBytes) + ' available.'); bump('bad'); }
+    else if(pct > 0.85){ checks.push('RAM tight: ' + Math.round(pct*100) + '% utilization.'); bump('tight'); }
+  }
+  {
+    const pct = req.totalDeviceIOPS / totalIops;
+    if(totalIops>0 && pct > 1){ checks.push('Not enough IOPS: ' + fmtNum(req.totalDeviceIOPS) + ' required vs ' + fmtNum(totalIops) + ' available.'); bump('bad'); }
+    else if(totalIops>0 && pct > 0.85){ checks.push('IOPS tight: ' + Math.round(pct*100) + '% utilization.'); bump('tight'); }
+  }
+  if(checks.length===0) checks.push('Comfortable margin on storage, RAM and IOPS.');
+
+  return { status: worstStatus, detail: checks.join(' ') };
+}
+
+function renderRow(row){
+  const csp = CSP_DATA[row.cspKey];
+  const fit = lastRequirement ? evaluateFit(row) : {status:'ok', detail:'—'};
+  const badgeClass = fit.status==='ok' ? 'fit-ok' : fit.status==='tight' ? 'fit-tight' : 'fit-bad';
+  const badgeLabel = fit.status==='ok' ? 'OK' : fit.status==='tight' ? 'TIGHT' : 'INSUFFICIENT';
+
+  const unitPrice = row.priceSource==='loading' ? row.instance.price : (row.livePrice ?? row.instance.price);
+  const computeMonthly = row.qty * unitPrice * 730;
+  const netMonthly = lastNetworkResult ? lastNetworkResult.costs[row.cspKey] : 0;
+  const totalMonthly = computeMonthly + netMonthly;
+  const totalAnnual = totalMonthly*12;
+
+  const priceBadge = row.priceSource==='loading'
+    ? '<span class="price-source" style="color:var(--amber);border:1px solid var(--amber);"><span class="loading-dot"></span> looking up…</span>'
+    : row.priceSource==='live'
+      ? '<span class="price-source price-live">● live</span>'
+      : '<span class="price-source price-ref">○ reference</span>';
+
+  const totalRamGB = row.qty*row.instance.ram;
+  const totalNvmeTB = (row.qty*row.instance.nvme/1000).toFixed(1);
+  const totalIopsK = Math.round(row.qty*row.instance.iops/1000);
+
+  return '<tr>' +
+    '<td>' +
+      '<span class="row-instance">'+row.instance.id+'</span> '+priceBadge+
+      (row.isAlternative ? '<div style="font-size:10px;color:var(--blue);margin-top:4px;">↳ comfortable-fit alternative to the tight row above</div>' : '') +
+      '<div style="font-size:11px;color:var(--text-faint);margin-top:3px;">'+row.region.label+(row.auto ? ' · <span title="Auto-adjusts as the workload profile changes">auto</span>' : '')+'</div>' +
+      '<div style="margin-top:6px;">× <input type="number" class="qty-input" value="'+row.qty+'" min="1" onchange="updateQty(\''+row.id+'\', this.value)"> nodes' +
+        ' <button class="refresh-btn" onclick="refetchRow(\''+row.id+'\')" title="Refresh price">↻</button>' +
+      '</div>' +
+    '</td>' +
+    '<td class="mono" style="font-size:11.5px;color:var(--text-dim);">' +
+      totalRamGB+' GB RAM<br>'+totalNvmeTB+' TB NVMe<br>'+totalIopsK+'k IOPS' +
+    '</td>' +
+    '<td>' +
+      '<span class="fit-badge '+badgeClass+'">'+badgeLabel+'</span>' +
+      '<div class="fit-detail">'+fit.detail+'</div>' +
+    '</td>' +
+    '<td>' +
+      '<div class="row-cost">'+fmtUSD(totalMonthly)+'<span class="per-mo">/mo · '+fmtUSD(totalAnnual)+'/yr</span>' +
+      '<div class="breakdown">compute '+fmtUSD(computeMonthly)+' + network '+fmtUSD(netMonthly)+'</div></div>' +
+    '</td>' +
+    '<td><button class="remove-btn" onclick="removeRow(\''+row.id+'\')">✕</button></td>' +
+  '</tr>';
+}
+
+function renderCompareTable(){
+  const tbody = $('compareBody');
+  const empty = $('emptyCompare');
+  if(compareRows.length===0){
+    tbody.innerHTML='';
+    empty.style.display='block';
+    return;
+  }
+  empty.style.display='none';
+
+  const order = ['aws','gcp','azure'];
+  const groups = order
+    .map(cspKey => ({ cspKey, rows: compareRows.filter(r=>r.cspKey===cspKey) }))
+    .filter(g => g.rows.length > 0);
+
+  tbody.innerHTML = groups.map(g=>{
+    const csp = CSP_DATA[g.cspKey];
+    const groupCost = g.rows.reduce((sum,row)=>{
+      const unitPrice = row.priceSource==='loading' ? row.instance.price : (row.livePrice ?? row.instance.price);
+      const computeMonthly = row.qty * unitPrice * 730;
+      const netMonthly = lastNetworkResult ? lastNetworkResult.costs[row.cspKey] : 0;
+      return sum + computeMonthly + netMonthly;
+    }, 0);
+    const header = '<tr class="csp-group-row"><td colspan="5">' +
+      '<span class="csp-group-label" style="color:'+csp.color+';border-color:'+csp.color+';">'+csp.label+'</span>' +
+      '<span class="csp-group-count">'+g.rows.length+' configuration'+(g.rows.length>1?'s':'')+' · '+fmtUSD(groupCost)+'/mo combined</span>' +
+    '</td></tr>';
+    return header + g.rows.map(renderRow).join('');
+  }).join('');
+}
+
+async function refetchRow(id){
+  const row = compareRows.find(r=>String(r.id)===String(id));
+  if(!row) return;
+  row.priceSource = 'loading';
+  renderCompareTable();
+  await fetchLivePrice(row);
+  renderCompareTable();
+}
+function updateQty(id, val){
+  const row = compareRows.find(r=>String(r.id)===String(id));
+  if(row){
+    row.qty = Math.max(1, parseInt(val)||1);
+    row.auto = false;
+    row.hasAltGenerated = false;
+    renderCompareTable();
+    ensureTightAlternatives();
+  }
+}
+function removeRow(id){
+  compareRows = compareRows.filter(r=>String(r.id)!==String(id));
+  renderCompareTable();
+}
+
+function pickBestInstance(cspKey, perNodeRamGB, perNodeStorageTB, perNodeIops){
+  const list = CSP_DATA[cspKey].instances.slice().sort((a,b)=>a.ram-b.ram);
+  const fit = list.find(i => i.ram >= perNodeRamGB && (i.nvme/1000) >= perNodeStorageTB && i.iops >= perNodeIops);
+  return fit || list[list.length-1];
+}
+
+// Same selection, but requires 20% headroom on every dimension so the result
+// lands comfortably under the 85% "tight" threshold used by evaluateFit.
+function pickComfortableInstance(cspKey, perNodeRamGB, perNodeStorageTB, perNodeIops){
+  const margin = 1/0.8;
+  const list = CSP_DATA[cspKey].instances.slice().sort((a,b)=>a.ram-b.ram);
+  const fit = list.find(i => i.ram >= perNodeRamGB*margin && (i.nvme/1000) >= perNodeStorageTB*margin && i.iops >= perNodeIops*margin);
+  return fit || list[list.length-1];
+}
+
+// Scans current rows; for any row evaluating as "tight" that hasn't already
+// spawned a comfortable-fit sibling, adds one for the same CSP/region/qty.
+function ensureTightAlternatives(){
+  if(!lastRequirement) return;
+  const newRows = [];
+  compareRows.forEach(row=>{
+    if(row.isAlternative || row.hasAltGenerated) return;
+    const fit = evaluateFit(row);
+    if(fit.status !== 'tight') return;
+    const perNodeRamGB = (lastRequirement.ramNeeded / row.qty) / 1e9;
+    const perNodeStorageTB = lastRequirement.engine==='device' ? (lastRequirement.storageWithOverhead / row.qty) / 1e12 : 0;
+    const perNodeIops = lastRequirement.totalDeviceIOPS / row.qty;
+    const comfyInstance = pickComfortableInstance(row.cspKey, perNodeRamGB, perNodeStorageTB, perNodeIops);
+    row.hasAltGenerated = true;
+    if(comfyInstance.id !== row.instance.id){
+      newRows.push({
+        id: Date.now()+Math.random()+'-alt', cspKey: row.cspKey, region: row.region,
+        instance: comfyInstance, qty: row.qty, livePrice: null, priceSource: 'loading',
+        auto:false, isAlternative:true, altSourceId: row.id,
+      });
+    }
+  });
+  if(newRows.length){
+    compareRows.push(...newRows);
+    renderCompareTable();
+    newRows.forEach(r => fetchLivePrice(r).then(renderCompareTable));
+  }
+}
+
+// Keeps the auto-generated rows (one per CSP, created at load) in sync with
+// the workload profile as it changes — re-picks instance size and node count.
+function refreshAutoRows(){
+  if(!lastRequirement || !lastFinalNodes) return;
+  const perNodeRamGB = (lastRequirement.ramNeeded / lastFinalNodes) / 1e9;
+  const perNodeStorageTB = lastRequirement.engine==='device' ? (lastRequirement.storageWithOverhead / lastFinalNodes) / 1e12 : 0;
+  const perNodeIops = lastRequirement.totalDeviceIOPS / lastFinalNodes;
+
+  compareRows.forEach(row=>{
+    if(!row.auto) return;
+    const newInstance = pickBestInstance(row.cspKey, perNodeRamGB, perNodeStorageTB, perNodeIops);
+    if(newInstance.id !== row.instance.id){
+      row.instance = newInstance;
+      row.priceSource = 'loading';
+      row.hasAltGenerated = false;
+      fetchLivePrice(row).then(renderCompareTable);
+    }
+    if(row.qty !== lastFinalNodes){
+      row.qty = lastFinalNodes;
+      row.hasAltGenerated = false;
+    }
+  });
+}
+
+function initializeComparator(){
+  if(compareRows.length > 0) return;
+  if(!lastRequirement || !lastFinalNodes) return;
+
+  const perNodeRamGB = (lastRequirement.ramNeeded / lastFinalNodes) / 1e9;
+  const perNodeStorageTB = lastRequirement.engine==='device' ? (lastRequirement.storageWithOverhead / lastFinalNodes) / 1e12 : 0;
+  const perNodeIops = lastRequirement.totalDeviceIOPS / lastFinalNodes;
+
+  const defaultRegion = {
+    aws: CSP_DATA.aws.regions.find(r=>r.id==='eu-west-3') || CSP_DATA.aws.regions[0],
+    gcp: CSP_DATA.gcp.regions.find(r=>r.id==='europe-west9') || CSP_DATA.gcp.regions[0],
+    azure: CSP_DATA.azure.regions.find(r=>r.id==='francecentral') || CSP_DATA.azure.regions[0],
+  };
+
+  ['aws','gcp','azure'].forEach(cspKey=>{
+    const instance = pickBestInstance(cspKey, perNodeRamGB, perNodeStorageTB, perNodeIops);
+    const region = defaultRegion[cspKey];
+    const row = { id: Date.now()+Math.random()+'-'+cspKey, cspKey, region, instance, qty: lastFinalNodes, livePrice: null, priceSource: 'loading', auto:true };
+    compareRows.push(row);
+  });
+  renderCompareTable();
+  ensureTightAlternatives();
+  compareRows.forEach(row => { fetchLivePrice(row).then(renderCompareTable); });
+}
+
+populateCspSelectors();
+updateAzDependentUI();
+compute();
+initializeComparator();
+</script>
+</body>
+</html>

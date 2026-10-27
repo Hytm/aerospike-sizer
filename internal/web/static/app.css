@@ -55,7 +55,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 60px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
 .panel > h2:first-child, .panel > h3:first-child { margin-top: 0; }
 .grid { display: grid; gap: 12px; }
-.grid.k4 { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.grid.k4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
 .kpi .v { font-size: 20px; font-weight: 650; }
 .kpi .l { font-size: 12px; color: var(--muted); }
@@ -160,4 +160,7 @@ tr.add td { border-bottom: 0; }
   main { padding: 16px 12px 40px; }
   .addrow { grid-template-columns: 1fr 1fr; }
   .hero { flex-wrap: wrap; }
+}
+@media (max-width: 600px) {
+  .grid.k4 { grid-template-columns: 1fr 1fr; }
 }

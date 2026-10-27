@@ -14,6 +14,7 @@ type Config struct {
 	Addr        string // listen address (SIZER_ADDR)
 	StateDir    string // service state: binaries per slot (SIZER_STATE, default ~/Library/Application Support/sizer)
 	SharedPorts bool   // SO_REUSEPORT for zero-downtime handover (SIZER_SHARED_PORTS=1, set by launchd only)
+	Offline     bool   // reference prices only, no live lookup (SIZER_OFFLINE=1)
 }
 
 // Load reads the configuration from the environment.
@@ -23,6 +24,7 @@ func Load() Config {
 		Addr:        env("SIZER_ADDR", DefaultAddr),
 		StateDir:    env("SIZER_STATE", filepath.Join(home, "Library", "Application Support", "sizer")),
 		SharedPorts: os.Getenv("SIZER_SHARED_PORTS") == "1",
+		Offline:     os.Getenv("SIZER_OFFLINE") == "1",
 	}
 }
 

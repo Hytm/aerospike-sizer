@@ -16,5 +16,15 @@ make status    # state of the service
 
 Requires Go 1.27. `make ci` runs the local checks (gofmt, vet, staticcheck, tests, build).
 
+What it computes:
+
+- **Nodes** from the workload (record size and count, reads and writes, RF, storage engine) on a generic
+  node, with Aerospike-minded ceilings: storage 70 % (stop-writes), RAM 70 % after the OS reserve, CPU 60 %,
+  one spare node (N+1), at least RF+1 nodes, the same number in every rack.
+- **Replication traffic** across AZs (rack-awareness, Active Rack, Local read, client placement) or
+  across regions with XDR, and its monthly cost per provider.
+- **Cost comparison**: each provider's cheapest comfortable configuration, plus the ones you add, with
+  live on-demand prices for AWS and Azure in the chosen region and reference prices otherwise.
+
 Every result is an estimate: the assumptions behind it are shown and editable in the interface.
 Verify prices and network rates against your provider's official calculator before any budget decision.

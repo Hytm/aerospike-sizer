@@ -12,6 +12,7 @@ import (
 
 	"github.com/Hytm/aerospike-sizer/internal/buildinfo"
 	"github.com/Hytm/aerospike-sizer/internal/config"
+	"github.com/Hytm/aerospike-sizer/internal/pricing"
 	"github.com/Hytm/aerospike-sizer/internal/service"
 	"github.com/Hytm/aerospike-sizer/internal/web"
 )
@@ -24,7 +25,11 @@ func runServe(args []string) error {
 	}
 	cfg := config.Load()
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pid", os.Getpid(), "slot", *slot)
-	srv := &web.Server{Log: log, Slot: *slot}
+	prices := &pricing.Book{} // without fetchers: reference prices only
+	if !cfg.Offline {
+		prices = pricing.NewBook(log)
+	}
+	srv := &web.Server{Log: log, Slot: *slot, Prices: prices}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -33,7 +38,7 @@ func runServe(args []string) error {
 		return err
 	}
 	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	log.Info("listening", "addr", "http://"+ln.Addr().String(), "version", buildinfo.Version)
+	log.Info("listening", "addr", "http://"+ln.Addr().String(), "version", buildinfo.Version, "live_prices", !cfg.Offline)
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- httpSrv.Serve(ln) }()

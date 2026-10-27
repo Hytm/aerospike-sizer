@@ -24,6 +24,8 @@ locale (`make ci`), et on n'en ajoute pas.
 - Interface en anglais seulement.
 - **Crédibilité** : le dimensionnement est une estimation ; ses hypothèses sont affichées et modifiables.
   Un prix indique sa source (live, référence).
+- **Interface unifiée avec aerospike-wellness** (décision T8) : reprendre ses jetons et composants
+  (`internal/web/static/app.css`) plutôt qu'en inventer.
 
 ## Commandes
 
@@ -34,6 +36,10 @@ make run       # serveur local au premier plan sur 127.0.0.1:7311 (sans toucher 
 make deploy    # installe/relève le service launchd (deux exemplaires, sans coupure)
 ./bin/sizer status | uninstall | version
 ```
+
+- `SIZER_OFFLINE=1` : prix de référence seulement, aucune recherche live (repris par `make deploy`).
+- Modèle : `internal/sizing` (nœuds, adéquation, recommandation), `internal/network` (trafic multi-AZ et
+  XDR), `internal/pricing` (prix live), `internal/plan` (réponse de l'API) ; front dans `internal/web`.
 
 ## Déploiement
 

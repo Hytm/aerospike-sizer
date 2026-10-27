@@ -48,9 +48,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 
 - Choix de l'utilisateur (2026-10-27) : le comparateur déclarait « OK » des machines remplies jusqu'à
   85 % du NVMe brut, alors qu'Aerospike passe en stop-writes à 70 % (`stop-writes-used-pct`). Les
-  hypothèses reprennent celles de wellness (T22) : stockage 70 %, RAM 70 % après 5 Gio réservés à l'OS,
-  CPU 60 % de 15 000 transactions/s par vCPU, IO 100 % des IOPS soutenues, N+1, nœuds multiples du
-  nombre de racks. Toutes sont modifiables dans l'interface (badge « what-if »).
+  hypothèses reprennent celles de wellness (T22) : stockage 70 % (50 % depuis T9, repris par wellness
+  dans sa décision T30), RAM 70 % après 5 Gio réservés à l'OS, CPU 60 % de 15 000 transactions/s par
+  vCPU, IO 100 % des IOPS soutenues, N+1, nœuds multiples du nombre de racks. Toutes sont modifiables
+  dans l'interface (badge « what-if »).
 - Le CPU s'ajoute aux ressources (comme dans wellness) : sans lui, le comparateur recommandait des nœuds
   de 2 à 4 vCPU pour des centaines de milliers de transactions par seconde. Le nœud générique a un champ
   vCPU (16 par défaut).
@@ -124,7 +125,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   les enregistrements sur disque et les IOPS d'écriture ; sans persistance, aucune IO disque.
 - **Disque** : le guide dit de planifier au plus 50 % d'usage avec `defrag-lwm-pct` par défaut →
   plafond 50 % et surcoût d'écriture 0 par défaut (le 70 % + 10 % d'origine double-comptait la
-  défragmentation). Wellness garde ses propres plafonds (T22) et les transmet au sizer tels quels.
+  défragmentation). Wellness a repris ces deux valeurs (sa décision T30, hypothèses du 2026-10-27) et
+  transmet ses hypothèses (plafonds, croissance, N+1…) au sizer telles quelles : les deux outils donnent
+  le même nombre de nœuds quand le disque ou la RAM décide, aux constantes du sizer près (le sizer
+  n'applique pas la croissance au débit et son plancher est RF+1, pas 3 nœuds).
   **Compression** (EE) : part de la taille stockée, disque seulement. **Surcoût d'enregistrement** : 0
   par défaut, la taille saisie étant celle stockée (en-tête 39 B + bins, alignement 16 B selon le
   guide) ; à renseigner quand on saisit la seule charge utile.

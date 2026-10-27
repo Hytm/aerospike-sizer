@@ -118,9 +118,10 @@ const (
 )
 
 // DefaultHypotheses follow the capacity planning guide: 64 B of primary index per copy, device usage
-// planned at 50 % (defrag-lwm-pct), 10 % of RAM for the OS, sprigs half full with 10 B of RAM each,
-// secondary index entries of 14 B at 1.5 sparseness; with the ceilings of aerospike-wellness for
-// RAM (70 %), CPU (60 % of 15,000 transactions per vCPU) and IO, and one spare node.
+// planned at 50 % (the default defrag-lwm-pct) with no write overhead on top, 10 % of RAM for the OS,
+// sprigs half full with 10 B of RAM each, secondary index entries of 14 B at 1.5 sparseness. The ceilings
+// (storage 50 %, RAM 70 %, CPU 60 % of 15,000 transactions per vCPU, IO 100 %) and the spare node are
+// aerospike-wellness's defaults too.
 func DefaultHypotheses() Hypotheses {
 	return Hypotheses{
 		Growth: 0.3, IndexBytes: 64, RecordOverhead: 0, WriteOverhead: 0, Compression: 1, DefragMult: 1.3, CacheHit: 0.7,

@@ -12,7 +12,11 @@ import (
 
 func manager() *service.Manager {
 	cfg := config.Load()
-	return service.NewManager(cfg.StateDir, cfg.Addr, buildinfo.Version, nil)
+	env := map[string]string{}
+	if cfg.Offline {
+		env["SIZER_OFFLINE"] = "1"
+	}
+	return service.NewManager(cfg.StateDir, cfg.Addr, buildinfo.Version, env)
 }
 
 // runDeploy installs this binary as the launchd service, handing over without downtime.

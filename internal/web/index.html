@@ -26,6 +26,7 @@
   </div>
   <div class="notice info">Every figure below is an <strong>estimate</strong> resting on the hypotheses shown; verify prices and network rates against the provider's calculator before any budget decision. <span id="pricesNote"></span></div>
   <div class="notice err" id="failure" hidden></div>
+  <div class="notice info" id="prefilled" hidden></div>
 
   <div class="layout">
     <form class="inputs" id="form" autocomplete="off" onsubmit="return false">
@@ -44,6 +45,15 @@
           <div class="f">Storage engine
             <div class="seg" data-path="workload.engine"><button type="button" data-v="device">Device (NVMe)</button><button type="button" data-v="memory">Memory</button></div>
           </div>
+          <label class="check" data-when="memory"><input type="checkbox" data-path="workload.persist"> <span>Persisted on a device <span class="muted small">records also written to NVMe</span></span></label>
+          <div class="f">Primary index
+            <div class="seg" data-path="workload.index_on"><button type="button" data-v="ram">In RAM</button><button type="button" data-v="flash">On flash (all-flash)</button></div>
+          </div>
+          <label class="f">Secondary index entries <span class="unit">per record, all indexes</span><input type="number" data-path="workload.sindex_entries" min="0" step="1"></label>
+          <div class="f" data-when="sindex">Secondary indexes
+            <div class="seg" data-path="workload.sindex_on"><button type="button" data-v="ram">In RAM</button><button type="button" data-v="flash">On flash</button></div>
+          </div>
+          <label class="check"><input type="checkbox" data-path="workload.set_index"> <span>Set indexes <span class="muted small">16 B per record copy</span></span></label>
         </div>
       </section>
 
@@ -68,10 +78,13 @@
           <label class="f">RAM fill <span class="unit">%</span><input type="number" data-path="hypotheses.ram_fill" data-scale="100" min="10" max="100"></label>
           <label class="f">CPU ceiling <span class="unit">%</span><input type="number" data-path="hypotheses.cpu_target" data-scale="100" min="10" max="100"></label>
           <label class="f">IO ceiling <span class="unit">%</span><input type="number" data-path="hypotheses.io_target" data-scale="100" min="10" max="100"></label>
-          <label class="f">OS reserve <span class="unit">GiB</span><input type="number" data-path="hypotheses.os_reserve_gib" min="0" step="1"></label>
+          <label class="f">OS reserve <span class="unit">GiB, at least</span><input type="number" data-path="hypotheses.os_reserve_gib" min="0" step="1"></label>
+          <label class="f">OS reserve <span class="unit">% of RAM</span><input type="number" data-path="hypotheses.os_reserve_pct" data-scale="100" min="0" max="90"></label>
           <label class="f">Transactions <span class="unit">/s per vCPU</span><input type="number" data-path="hypotheses.ops_per_vcpu" min="100" step="500"></label>
         </div>
-        <label class="check"><input type="checkbox" data-path="hypotheses.node_loss"> <span>Survive the loss of one node (N+1)</span></label>
+        <div class="f">Keep the ceilings after the loss of
+          <div class="seg" data-path="hypotheses.loss"><button type="button" data-v="none">Nothing</button><button type="button" data-v="node">One node</button><button type="button" data-v="rack">One rack</button></div>
+        </div>
         <details>
           <summary class="small">Growth, index, overheads, cache</summary>
           <div class="fields two">
@@ -80,6 +93,12 @@
             <label class="f">Write-block overhead <span class="unit">%</span><input type="number" data-path="hypotheses.write_overhead" data-scale="100" min="0" step="1"></label>
             <label class="f">Defrag <span class="unit">× device writes</span><input type="number" data-path="hypotheses.defrag_mult" min="1" step="0.05"></label>
             <label class="f">Reads absorbed by cache <span class="unit">%, device only</span><input type="number" data-path="hypotheses.cache_hit" data-scale="100" min="0" max="100"></label>
+            <label class="f">Compression <span class="unit">% stored size</span><input type="number" data-path="hypotheses.compression" data-scale="100" min="5" max="100"></label>
+            <label class="f">Record overhead <span class="unit">B, if the size is the payload only</span><input type="number" data-path="hypotheses.record_overhead" min="0" step="1"></label>
+            <label class="f">Sprig fill <span class="unit">%, all-flash</span><input type="number" data-path="hypotheses.sprig_fill" data-scale="100" min="5" max="100"></label>
+            <label class="f">RAM per sprig <span class="unit">bytes</span><input type="number" data-path="hypotheses.sprig_ram_bytes" min="0" step="1"></label>
+            <label class="f">Secondary index entry <span class="unit">bytes</span><input type="number" data-path="hypotheses.sindex_entry_bytes" min="0" step="1"></label>
+            <label class="f">Secondary index sparseness <span class="unit">×, 1.5 average, 2 worst</span><input type="number" data-path="hypotheses.sindex_sparseness" min="1" step="0.1"></label>
           </div>
         </details>
         <div class="actions"><button class="btn small" type="button" id="resetHyp">Default hypotheses</button></div>
@@ -98,7 +117,7 @@
         <div class="grid k4" id="kpis"></div>
         <h3>Placement</h3>
         <div class="racks" id="racks"></div>
-        <p class="small muted formula">Storage = record size × records × RF × (1 + write-block overhead) × (1 + growth). RAM = records × RF × index bytes × (1 + growth), plus the data in memory mode. CPU = (reads/s + writes/s) ÷ transactions per vCPU. Device IOPS = writes/s × RF × defrag + reads/s × (1 − cache hit) with data on device. Growth applies to the data, not to the throughput. Nodes per resource = demand ÷ what a node offers at its ceiling, plus one spare node for N+1, never fewer than RF+1, rounded up so that every rack holds as many nodes.</p>
+        <p class="small muted formula">Records = (size + overhead) × records × RF × (1 + growth); on device, × (1 + fragmentation) × compression. Primary index in RAM = 64 B per copy; on flash, 4 KiB sprigs holding 64 entries at the fill share (partition-tree-sprigs rounded up to a power of two, × 4096 partitions × RF), with 10 B of RAM each. Secondary indexes = entries × 14 B × sparseness × RF; set indexes = 16 B per copy. CPU = (reads/s + writes/s) ÷ transactions per vCPU. Device IOPS = writes/s × RF × defrag + reads/s × (1 − cache hit) with records on device, plus one flash index read per read and a read and a write per replica write with the index on flash. Growth applies to the records, not to the throughput. Nodes per resource = demand ÷ what a node offers at its ceiling on the nodes left after the planned loss, never fewer than RF+1, rounded up so that every rack holds as many nodes.</p>
       </section>
 
       <section class="panel" id="network">

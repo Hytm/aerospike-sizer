@@ -18,18 +18,21 @@ func near(a, b float64) bool { return math.Abs(a-b) <= 1e-9*math.Max(math.Abs(a)
 func TestDemandCountsEveryCopyWithOverheadAndGrowth(t *testing.T) {
 	h := DefaultHypotheses()
 	h.WriteOverhead = 0.1
-	d := DemandOf(workload(), h)
+	d := Detailed(workload(), h)
 	if want := 1024 * 500e6 * 2 * 1.1 * 1.3; !near(d.Storage, want) {
 		t.Errorf("storage = %v, want %v", d.Storage, want)
 	}
 	if want := 500e6 * 2 * 64 * 1.3; !near(d.RAM, want) {
 		t.Errorf("RAM = %v, want %v (index only on device)", d.RAM, want)
 	}
-	if want := 40000*2*1.3 + 200000*0.3; !near(d.IOPS, want) {
-		t.Errorf("IOPS = %v, want %v", d.IOPS, want)
+	if want := (40000*2*1.3 + 200000*0.3) * 1.3; !near(d.IOPS, want) {
+		t.Errorf("IOPS = %v, want %v (throughput grows too)", d.IOPS, want)
 	}
-	if want := 240000 / 15000.0; !near(d.CPU, want) {
-		t.Errorf("CPU = %v vCPU, want %v", d.CPU, want)
+	if want := 240000 * 1.3 / 15000.0; !near(d.CPU, want) || !near(d.TPS, 240000*1.3) {
+		t.Errorf("CPU = %v vCPU for %v tx/s, want %v", d.CPU, d.TPS, want)
+	}
+	if grown := workload().Grown(h); !near(grown.Objects, 500e6*1.3) || !near(grown.ReadsPerSec, 200000*1.3) || !near(grown.WritesPerSec, 40000*1.3) || grown.RF != 2 {
+		t.Errorf("grown workload = %+v", grown)
 	}
 	h.RecordOverhead, h.Compression = 56, 0.5
 	if d := DemandOf(workload(), h); !near(d.Storage, 1080*500e6*2*1.1*1.3*0.5) {
@@ -47,7 +50,7 @@ func TestMemoryEngineKeepsRecordsInRAMAndPersistsThemOnRequest(t *testing.T) {
 	}
 	w.Persist = true
 	d = Detailed(w, h)
-	if !near(d.Storage, 1024*500e6*2*1.3) || !near(d.IOPS, 40000*2*1.3) || d.ReadIOPS != 0 {
+	if !near(d.Storage, 1024*500e6*2*1.3) || !near(d.IOPS, 40000*2*1.3*1.3) || d.ReadIOPS != 0 {
 		t.Errorf("persisted memory engine demand = %+v", d)
 	}
 }
@@ -286,6 +289,19 @@ func TestComfortableStaysUnderTheComfortLoad(t *testing.T) {
 	smaller := p.Instances[0]
 	if smaller.Name != inst.Name && Evaluate(d, OfInstance(smaller), 3, h, l).MaxLoad() <= ComfortLoad {
 		t.Errorf("%s is comfortable too and smaller than %s", smaller.Name, inst.Name)
+	}
+}
+
+func TestExplainShowsTheThroughputAtTheHorizon(t *testing.T) {
+	h := DefaultHypotheses()
+	w := workload()
+	d := Detailed(w, h)
+	node := Amounts{Storage: 1e13, RAM: 1000 * catalog.GiB, CPU: 16, IOPS: 1e7}
+	l := Layout{RF: 2, AZs: 1, Racks: 1}
+	// 312,000 tx/s = 20.8 vCPU on 9.6 usable per node: 3 serving nodes plus the spare.
+	s := Size(d.Amounts, node, h, l)
+	if e := s.Explain(w, d, node, h, l); s.Nodes != 4 || s.Binding != ByCPU || !strings.Contains(e, "312,000 transactions/s") {
+		t.Errorf("sizing %+v, explanation = %q", s, e)
 	}
 }
 

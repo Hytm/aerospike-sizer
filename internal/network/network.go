@@ -67,7 +67,7 @@ func (s Settings) Normalize() Settings {
 	if s.Mode != MultiRegion {
 		s.Mode = MultiAZ
 	}
-	s.AZs = min(max(s.AZs, 1), 6)
+	s.AZs = min(max(s.AZs, 1), 12)
 	s.Regions = min(max(s.Regions, 2), 8)
 	if s.ClientPlacement != Single {
 		s.ClientPlacement = Distributed
@@ -118,7 +118,9 @@ type Traffic struct {
 // secondsPerMonth matches the 730 hours a month of compute prices.
 const secondsPerMonth = 730 * 3600
 
-// Estimate computes the traffic of a workload over normalized settings.
+// Estimate computes the traffic of a workload over normalized settings. The workload is taken as
+// given: the plan passes it grown to the planning horizon (sizing.Workload.Grown), so the traffic
+// follows the growth hypothesis like the CPU and the IOPS do.
 func Estimate(s Settings, w sizing.Workload) Traffic {
 	var t Traffic
 	if s.Mode == MultiRegion {

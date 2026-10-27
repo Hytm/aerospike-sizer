@@ -177,9 +177,9 @@ func (s Sizing) Explain(w Workload, d Detail, node Amounts, h Hypotheses, l Layo
 	case ByRAM:
 		fmt.Fprintf(&b, "Memory drives the sizing: %s (%s; %s), %s usable per node (%s).", units.IEC(d.RAM), d.ramParts(), scope, units.IEC(usable.RAM), h.ceilingText(ByRAM))
 	case ByCPU:
-		fmt.Fprintf(&b, "CPU drives the sizing: %s transactions/s need %s at %s per vCPU, %s usable per node (%s).", units.Count(w.ReadsPerSec+w.WritesPerSec), ByCPU.amount(d.CPU), units.Count(h.OpsPerVCPU), ByCPU.amount(usable.CPU), h.ceilingText(ByCPU))
+		fmt.Fprintf(&b, "CPU drives the sizing: %s transactions/s at the horizon (%s growth) need %s at %s per vCPU, %s usable per node (%s).", units.Count(d.TPS), units.Pct(h.Growth), ByCPU.amount(d.CPU), units.Count(h.OpsPerVCPU), ByCPU.amount(usable.CPU), h.ceilingText(ByCPU))
 	case ByIOPS:
-		fmt.Fprintf(&b, "Device throughput drives the sizing: %s sustained IOPS (%s), %s usable per node (%s).", units.Count(d.IOPS), d.iopsParts(), units.Count(usable.IOPS), h.ceilingText(ByIOPS))
+		fmt.Fprintf(&b, "Device throughput drives the sizing: %s sustained IOPS (%s; %s), %s usable per node (%s).", units.Count(d.IOPS), d.iopsParts(), scope, units.Count(usable.IOPS), h.ceilingText(ByIOPS))
 	default:
 		fmt.Fprintf(&b, "Storage, RAM, CPU and IOPS fit on fewer nodes: the topology floor (RF+1 = %d) sets the minimum for fault tolerance.", l.MinNodes())
 	}

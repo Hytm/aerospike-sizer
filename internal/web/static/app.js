@@ -214,7 +214,7 @@
     $("explain").textContent = g.explain;
     var titles = {
       storage: "Storage to place", ram: w.index_on === "flash" ? "Memory (index on flash)" : "Memory",
-      cpu: "CPU: " + count(w.reads_per_sec + w.writes_per_sec) + " tx/s", iops: "Device IOPS"
+      cpu: "CPU: " + count(d.tps) + " tx/s at the horizon", iops: "Device IOPS"
     };
     $("kpis").innerHTML = RESOURCES.map(function (res) {
       var demand = d[res.key], ceiling = h[res.ceiling];

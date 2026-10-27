@@ -20,9 +20,11 @@ What it computes:
 
 - **Nodes** from the workload (record size and count, reads and writes, RF, storage engine with or
   without persistence, primary index in RAM or on flash, secondary and set indexes) on a generic node,
-  with the ceilings of the Aerospike capacity planning guide: device usage 50 %, RAM 70 % after 10 % for
-  the OS, CPU 60 %, headroom for the loss of a node or a rack, at least RF+1 nodes, the same number in
-  every rack. All-flash sizing follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks,
+  with a planning growth (30 % by default) applied to the records and to the throughput alike (CPU,
+  device IOPS, replication traffic), and the ceilings of the Aerospike capacity planning guide: device
+  usage 50 %, RAM 70 % after 10 % for the OS (5 GiB at least), CPU 60 %, headroom for the loss of a node
+  or a rack, at least RF+1 nodes, the same number in every rack. Aerospike Wellness sizes with the same
+  conventions. All-flash sizing follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks,
   10 B of RAM per sprig); secondary indexes count 14 B per entry at 1.5 sparseness.
 - **Replication traffic** across AZs (rack-awareness, Active Rack, Local read, client placement) or
   across regions with XDR, and its monthly cost per provider.

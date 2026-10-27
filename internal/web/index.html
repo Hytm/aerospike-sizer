@@ -88,7 +88,7 @@
         <details>
           <summary class="small">Growth, index, overheads, cache</summary>
           <div class="fields two">
-            <label class="f">Growth <span class="unit">%</span><input type="number" data-path="hypotheses.growth" data-scale="100" min="0" step="5"></label>
+            <label class="f">Growth <span class="unit">%, records and throughput</span><input type="number" data-path="hypotheses.growth" data-scale="100" min="0" step="5"></label>
             <label class="f">Primary index <span class="unit">B/record</span><input type="number" data-path="hypotheses.index_bytes" min="0" step="1"></label>
             <label class="f">Write-block overhead <span class="unit">%</span><input type="number" data-path="hypotheses.write_overhead" data-scale="100" min="0" step="1"></label>
             <label class="f">Defrag <span class="unit">× device writes</span><input type="number" data-path="hypotheses.defrag_mult" min="1" step="0.05"></label>
@@ -117,12 +117,12 @@
         <div class="grid k4" id="kpis"></div>
         <h3>Placement</h3>
         <div class="racks" id="racks"></div>
-        <p class="small muted formula">Records = (size + overhead) × records × RF × (1 + growth); on device, × (1 + fragmentation) × compression. Primary index in RAM = 64 B per copy; on flash, 4 KiB sprigs holding 64 entries at the fill share (partition-tree-sprigs rounded up to a power of two, × 4096 partitions × RF), with 10 B of RAM each. Secondary indexes = entries × 14 B × sparseness × RF; set indexes = 16 B per copy. CPU = (reads/s + writes/s) ÷ transactions per vCPU. Device IOPS = writes/s × RF × defrag + reads/s × (1 − cache hit) with records on device, plus one flash index read per read and a read and a write per replica write with the index on flash. Growth applies to the records, not to the throughput. Nodes per resource = demand ÷ what a node offers at its ceiling on the nodes left after the planned loss, never fewer than RF+1, rounded up so that every rack holds as many nodes.</p>
+        <p class="small muted formula">Records = (size + overhead) × records × RF × (1 + growth); on device, × (1 + fragmentation) × compression. Primary index in RAM = 64 B per copy; on flash, 4 KiB sprigs holding 64 entries at the fill share (partition-tree-sprigs rounded up to a power of two, × 4096 partitions × RF), with 10 B of RAM each. Secondary indexes = entries × 14 B × sparseness × RF; set indexes = 16 B per copy. CPU = (reads/s + writes/s) × (1 + growth) ÷ transactions per vCPU. Device IOPS = [writes/s × RF × defrag + reads/s × (1 − cache hit) with records on device, plus one flash index read per read and a read and a write per replica write with the index on flash] × (1 + growth). Growth applies to the records and to the throughput alike, replication traffic included. Nodes per resource = demand ÷ what a node offers at its ceiling on the nodes left after the planned loss, never fewer than RF+1, rounded up so that every rack holds as many nodes.</p>
       </section>
 
       <section class="panel" id="network">
         <h3>Network &amp; replication</h3>
-        <p class="small muted">Traffic replication generates across billing boundaries: between the AZs of one region, or between regions through XDR.</p>
+        <p class="small muted">Traffic replication generates across billing boundaries, on the reads and writes at the planning horizon (growth included): between the AZs of one region, or between regions through XDR.</p>
         <div class="seg wide" data-path="network.mode"><button type="button" data-v="az">Single region · multi-AZ</button><button type="button" data-v="region">Multi-region · XDR</button></div>
         <div class="netfields" data-when="az">
           <div class="f">Availability zones

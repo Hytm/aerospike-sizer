@@ -132,7 +132,7 @@ func Compute(req Request, q Quoter) Response {
 	s := req.Network.Normalize()
 	node := req.Node.Amounts()
 	detail := sizing.Detailed(w, h)
-	c := computation{demand: detail.Amounts, hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w), quoter: q}
+	c := computation{demand: detail.Amounts, hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w.Grown(h)), quoter: q}
 
 	g := sizing.Size(c.demand, node, h, c.layout)
 	load := map[sizing.Constraint]float64{}

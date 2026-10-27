@@ -49,13 +49,15 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 - Choix de l'utilisateur (2026-10-27) : le comparateur déclarait « OK » des machines remplies jusqu'à
   85 % du NVMe brut, alors qu'Aerospike passe en stop-writes à 70 % (`stop-writes-used-pct`). Les
   hypothèses reprennent celles de wellness (T22) : stockage 70 % (50 % depuis T9, repris par wellness
-  dans sa décision T30), RAM 70 % après 5 Gio réservés à l'OS, CPU 60 % de 15 000 transactions/s par
+  dans sa décision T30), RAM 70 % après 5 Gio réservés à l'OS (10 % de la RAM, 5 Gio au moins, depuis
+  T9), CPU 60 % de 15 000 transactions/s par
   vCPU, IO 100 % des IOPS soutenues, N+1, nœuds multiples du nombre de racks. Toutes sont modifiables
   dans l'interface (badge « what-if »).
 - Le CPU s'ajoute aux ressources (comme dans wellness) : sans lui, le comparateur recommandait des nœuds
   de 2 à 4 vCPU pour des centaines de milliers de transactions par seconde. Le nœud générique a un champ
   vCPU (16 par défaut).
-- Croissance : appliquée aux données (stockage, RAM), pas au débit, comme le sizer d'origine.
+- Croissance : appliquée aux données (stockage, RAM), pas au débit, comme le sizer d'origine
+  (remplacé par T11 : le débit aussi).
 - Unités : stockage en décimal (TB, comme les disques sont vendus), RAM en binaire (GiB, comme les
   fournisseurs la publient) ; l'ancienne page affichait en binaire des saisies décimales.
 - Usage affiché : part de la capacité brute (RAM hors réserve OS) avec le plafond sous chaque jauge.
@@ -127,8 +129,8 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   plafond 50 % et surcoût d'écriture 0 par défaut (le 70 % + 10 % d'origine double-comptait la
   défragmentation). Wellness a repris ces deux valeurs (sa décision T30, hypothèses du 2026-10-27) et
   transmet ses hypothèses (plafonds, croissance, N+1…) au sizer telles quelles : les deux outils donnent
-  le même nombre de nœuds quand le disque ou la RAM décide, aux constantes du sizer près (le sizer
-  n'applique pas la croissance au débit et son plancher est RF+1, pas 3 nœuds).
+  le même nombre de nœuds, aux constantes du sizer près (conventions de croissance, de plancher et de
+  réserve OS alignées en T11).
   **Compression** (EE) : part de la taille stockée, disque seulement. **Surcoût d'enregistrement** : 0
   par défaut, la taille saisie étant celle stockée (en-tête 39 B + bins, alignement 16 B selon le
   guide) ; à renseigner quand on saisit la seule charge utile.
@@ -145,3 +147,27 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   `workload.index_on`, `hypotheses.growth`, `network.azs`, `node.ram_gib`…) ; `source` nomme l'origine
   affichée, `back` (URL locale seulement) ramène à la page d'origine. C'est ainsi que Wellness renvoie
   au sizer avec les paramètres d'un cluster (décision T29 de Wellness).
+
+## T11 — Croissance aussi sur le débit, plancher RF+1 et réserve OS partagés avec wellness
+
+- Choix de l'utilisateur (2026-10-27), pour que les deux outils donnent le même nombre de nœuds :
+  la croissance prévue sur l'horizon porte sur les enregistrements **et** sur le débit, au même taux
+  (convention de wellness, que le sizer adopte ; T5 est remplacé sur ce point). CPU, IOPS disque
+  (lectures, écritures, blocs de l'index flash) et trafic de réplication sont calculés sur le débit à
+  l'horizon (`Workload.Grown`, `Detail.TPS`, affiché sur la carte CPU).
+- Plancher de nœuds : RF+1 (convention du sizer, reprise par wellness dans sa décision T31, qui
+  abandonne son minimum de 3 nœuds). Réserve OS : wellness adopte 10 % de la RAM avec un plancher de
+  5 Gio (T31) et la transmet au sizer.
+- Les deux outils donnent désormais le même nombre de nœuds pour un même gabarit et les mêmes
+  hypothèses, aux constantes propres au sizer près (sprigs, index secondaires, surcoût
+  d'enregistrement, compression), que wellness transmet explicitement.
+- Effet sur l'exemple par défaut (500 M × 1 KiB, 200 000 lectures/s + 40 000 écritures/s, nœud
+  16 vCPU / 128 Gio) : 312 000 tx/s à l'horizon → 20,8 vCPU et 213 200 IOPS ; le nœud générique passe
+  de 3 nœuds (plancher RF+1) à 6 (CPU, N+1 arrondi à 3 racks) ; recommandations AWS i4i.xlarge × 12
+  (× 9 avant), GCP z3-highmem-22-highlssd × 3 (z3-highmem-16-highlssd × 3 avant), Azure L8s_v3 × 9
+  (L16s_v3 × 3 avant) ;
+  trafic inter-AZ 466 452 Go/mois (358 810 avant).
+- `network.Estimate` garde sa signature : le plan lui passe la charge à l'horizon (`Workload.Grown`),
+  le trafic suit donc la croissance sans que le paquet réseau la connaisse.
+- Le nombre d'AZ accepté par l'API passe de 6 à 12 (`network.Settings.Normalize`), pour qu'un cluster
+  rack-aware de plus de six racks analysé par wellness arrondisse ses nœuds aux mêmes racks ici.

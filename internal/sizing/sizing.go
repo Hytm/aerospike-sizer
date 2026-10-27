@@ -71,6 +71,15 @@ func (w Workload) Normalize() Workload {
 // OnDevice tells whether records are written to a device.
 func (w Workload) OnDevice() bool { return w.Engine == Device || w.Persist }
 
+// Grown returns the workload at the planning horizon: records and throughput grow alike.
+func (w Workload) Grown(h Hypotheses) Workload {
+	g := 1 + h.Growth
+	w.Objects *= g
+	w.ReadsPerSec *= g
+	w.WritesPerSec *= g
+	return w
+}
+
 // Loss is the failure the ceilings must survive.
 type Loss string
 
@@ -83,7 +92,7 @@ const (
 
 // Hypotheses are the assumptions of every estimate; the interface shows and edits them.
 type Hypotheses struct {
-	Growth         float64 `json:"growth"`          // growth of the records over the planning horizon (0.3 = +30 %)
+	Growth         float64 `json:"growth"`          // growth of the records and of the throughput over the planning horizon (0.3 = +30 %)
 	IndexBytes     float64 `json:"index_bytes"`     // primary index per record copy (64 B)
 	RecordOverhead float64 `json:"record_overhead"` // bytes added to the object size when it is the payload only
 	WriteOverhead  float64 `json:"write_overhead"`  // fragmentation on top of the storage fill
@@ -221,9 +230,10 @@ func (h Hypotheses) Usable(node Amounts) Amounts {
 }
 
 // Detail is the demand with what makes it up, every copy, overheads and growth included (growth
-// applies to the records, not to the throughput).
+// applies to the records and to the throughput alike).
 type Detail struct {
 	Amounts
+	TPS float64 `json:"tps"` // transactions per second at the horizon
 	// Storage parts.
 	Data        float64 `json:"data"`         // records on device
 	FlashIndex  float64 `json:"flash_index"`  // primary index blocks and sprig roots on NVMe
@@ -242,10 +252,10 @@ type Detail struct {
 	SprigsPerPartition int `json:"sprigs_per_partition"`
 }
 
-// Detailed computes what the whole cluster must hold and serve.
+// Detailed computes what the whole cluster must hold and serve at the planning horizon.
 func Detailed(w Workload, h Hypotheses) Detail {
-	g := 1 + h.Growth
-	objects := w.Objects * g
+	w = w.Grown(h)
+	objects := w.Objects
 	copies := objects * float64(w.RF)
 	record := (w.ObjectSize + h.RecordOverhead) * copies
 	onDevice := record * (1 + h.WriteOverhead) * h.Compression
@@ -286,7 +296,8 @@ func Detailed(w Workload, h Hypotheses) Detail {
 	}
 	d.Storage = d.Data + d.FlashIndex + d.FlashSindex
 	d.RAM = d.Index + d.Sprigs + d.Sindex + d.SetIndex + d.DataRAM
-	d.CPU = (w.ReadsPerSec + w.WritesPerSec) / h.OpsPerVCPU
+	d.TPS = w.ReadsPerSec + w.WritesPerSec
+	d.CPU = d.TPS / h.OpsPerVCPU
 	d.IOPS = d.ReadIOPS + d.WriteIOPS + d.IndexIOPS
 	return d
 }

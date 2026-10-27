@@ -25,7 +25,8 @@ func (q referenceQuoter) Quote(provider, _ string, inst catalog.Instance) pricin
 
 func TestDefaultRequest(t *testing.T) {
 	resp := Compute(DefaultRequest(), referenceQuoter{})
-	if resp.Generic.Nodes != 3 || resp.Generic.Binding != sizing.ByTopology || resp.Generic.Explain == "" {
+	// 240,000 tx/s grow to 312,000: 20.8 vCPU at 60 % of 16 vCPU nodes, plus a spare, over 3 racks.
+	if resp.Generic.Nodes != 6 || resp.Generic.Binding != sizing.ByCPU || resp.Generic.Explain == "" {
 		t.Errorf("generic = %+v", resp.Generic)
 	}
 	if len(resp.Rows) != 3 || resp.Rows[0].ID != "auto-aws" || resp.Rows[1].Provider != "gcp" || resp.Rows[2].Provider != "azure" {
@@ -64,10 +65,22 @@ func TestRowCostCountsEveryClusterAndTheNetwork(t *testing.T) {
 	}
 }
 
+func TestNetworkTrafficGrowsWithTheThroughput(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = nil
+	req.Network.Mode = network.MultiRegion
+	req.Network.Regions = 3
+	resp := Compute(req, referenceQuoter{})
+	// 40,000 writes/s × 1.3 growth × 1,024 B × (3 − 1) regions × (1 − 50 % compression).
+	if want := 40000 * 1.3 * 1024 * 2 * 0.5; math.Abs(resp.Network.BytesPerSec["xdr"]-want) > 1e-6 {
+		t.Errorf("xdr = %v B/s, want %v", resp.Network.BytesPerSec["xdr"], want)
+	}
+}
+
 func TestTightRowGetsAComfortableAlternative(t *testing.T) {
 	req := DefaultRequest()
 	req.Auto = nil
-	req.Workload.ReadsPerSec = 50000 // CPU is not the matter here
+	req.Workload.ReadsPerSec = 50000 // 117,000 tx/s at the horizon: CPU at 81 % of the usable vCPUs, RAM is the matter
 	// 3 × i4i.2xlarge, one down: 2 × 41.3 GiB of usable RAM for 77.5 GiB of index (94 %): tight.
 	req.Rows = []RowRequest{{ID: "r1", Provider: "aws", Region: "eu-west-3", Instance: "i4i.2xlarge", Nodes: 3}}
 	resp := Compute(req, referenceQuoter{})

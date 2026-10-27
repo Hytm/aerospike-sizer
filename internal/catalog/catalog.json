@@ -1,0 +1,308 @@
+[
+ {
+  "key": "aws",
+  "label": "AWS",
+  "tag": "AWS",
+  "color": "#FF9900",
+  "default_region": "eu-west-3",
+  "live_prices": true,
+  "regions": [
+   {
+    "id": "us-east-1",
+    "label": "us-east-1 · N. Virginia"
+   },
+   {
+    "id": "us-west-2",
+    "label": "us-west-2 · Oregon"
+   },
+   {
+    "id": "eu-west-1",
+    "label": "eu-west-1 · Ireland"
+   },
+   {
+    "id": "eu-west-3",
+    "label": "eu-west-3 · Paris"
+   },
+   {
+    "id": "eu-central-1",
+    "label": "eu-central-1 · Frankfurt"
+   },
+   {
+    "id": "ap-southeast-1",
+    "label": "ap-southeast-1 · Singapore"
+   },
+   {
+    "id": "ap-southeast-3",
+    "label": "ap-southeast-3 · Jakarta"
+   },
+   {
+    "id": "ap-northeast-1",
+    "label": "ap-northeast-1 · Tokyo"
+   },
+   {
+    "id": "sa-east-1",
+    "label": "sa-east-1 · São Paulo"
+   }
+  ],
+  "instances": [
+   {
+    "name": "i4i.large",
+    "vcpu": 2,
+    "ram_gib": 16,
+    "drives": 1,
+    "drive_gb": 468,
+    "iops": 50000,
+    "price_hour": 0.172
+   },
+   {
+    "name": "i4i.xlarge",
+    "vcpu": 4,
+    "ram_gib": 32,
+    "drives": 1,
+    "drive_gb": 937,
+    "iops": 100000,
+    "price_hour": 0.343
+   },
+   {
+    "name": "i4i.2xlarge",
+    "vcpu": 8,
+    "ram_gib": 64,
+    "drives": 1,
+    "drive_gb": 1875,
+    "iops": 150000,
+    "price_hour": 0.686
+   },
+   {
+    "name": "i4i.4xlarge",
+    "vcpu": 16,
+    "ram_gib": 128,
+    "drives": 1,
+    "drive_gb": 3750,
+    "iops": 200000,
+    "price_hour": 1.373
+   },
+   {
+    "name": "i4i.8xlarge",
+    "vcpu": 32,
+    "ram_gib": 256,
+    "drives": 2,
+    "drive_gb": 3750,
+    "iops": 350000,
+    "price_hour": 2.746
+   },
+   {
+    "name": "i4i.16xlarge",
+    "vcpu": 64,
+    "ram_gib": 512,
+    "drives": 4,
+    "drive_gb": 3750,
+    "iops": 500000,
+    "price_hour": 5.491
+   }
+  ]
+ },
+ {
+  "key": "gcp",
+  "label": "Google Cloud",
+  "tag": "GCP",
+  "color": "#4285F4",
+  "default_region": "europe-west9",
+  "live_prices": false,
+  "regions": [
+   {
+    "id": "us-central1",
+    "label": "us-central1 · Iowa"
+   },
+   {
+    "id": "us-east1",
+    "label": "us-east1 · South Carolina"
+   },
+   {
+    "id": "us-west1",
+    "label": "us-west1 · Oregon"
+   },
+   {
+    "id": "europe-west1",
+    "label": "europe-west1 · Belgium"
+   },
+   {
+    "id": "europe-west9",
+    "label": "europe-west9 · Paris"
+   },
+   {
+    "id": "europe-west3",
+    "label": "europe-west3 · Frankfurt"
+   },
+   {
+    "id": "asia-southeast1",
+    "label": "asia-southeast1 · Singapore"
+   },
+   {
+    "id": "asia-southeast2",
+    "label": "asia-southeast2 · Jakarta"
+   },
+   {
+    "id": "asia-northeast1",
+    "label": "asia-northeast1 · Tokyo"
+   },
+   {
+    "id": "southamerica-east1",
+    "label": "southamerica-east1 · São Paulo"
+   }
+  ],
+  "instances": [
+   {
+    "name": "z3-highmem-8-highlssd",
+    "vcpu": 8,
+    "ram_gib": 64,
+    "drives": 1,
+    "drive_gb": 3000,
+    "iops": 50000,
+    "price_hour": 1.1519
+   },
+   {
+    "name": "z3-highmem-16-highlssd",
+    "vcpu": 16,
+    "ram_gib": 128,
+    "drives": 2,
+    "drive_gb": 3000,
+    "iops": 100000,
+    "price_hour": 2.3039
+   },
+   {
+    "name": "z3-highmem-22-highlssd",
+    "vcpu": 22,
+    "ram_gib": 176,
+    "drives": 3,
+    "drive_gb": 3000,
+    "iops": 140000,
+    "price_hour": 3.25
+   },
+   {
+    "name": "z3-highmem-32-highlssd",
+    "vcpu": 32,
+    "ram_gib": 256,
+    "drives": 4,
+    "drive_gb": 3000,
+    "iops": 200000,
+    "price_hour": 4.6077
+   },
+   {
+    "name": "z3-highmem-44-highlssd",
+    "vcpu": 44,
+    "ram_gib": 352,
+    "drives": 6,
+    "drive_gb": 3000,
+    "iops": 275000,
+    "price_hour": 6.5
+   },
+   {
+    "name": "z3-highmem-88-highlssd",
+    "vcpu": 88,
+    "ram_gib": 704,
+    "drives": 12,
+    "drive_gb": 3000,
+    "iops": 550000,
+    "price_hour": 13.0
+   }
+  ]
+ },
+ {
+  "key": "azure",
+  "label": "Microsoft Azure",
+  "tag": "AZURE",
+  "color": "#0078D4",
+  "default_region": "francecentral",
+  "live_prices": true,
+  "regions": [
+   {
+    "id": "eastus",
+    "label": "East US · Virginia"
+   },
+   {
+    "id": "westus2",
+    "label": "West US 2 · Washington"
+   },
+   {
+    "id": "westeurope",
+    "label": "West Europe · Netherlands"
+   },
+   {
+    "id": "francecentral",
+    "label": "France Central · Paris"
+   },
+   {
+    "id": "germanywestcentral",
+    "label": "Germany West Central · Frankfurt"
+   },
+   {
+    "id": "southeastasia",
+    "label": "Southeast Asia · Singapore"
+   },
+   {
+    "id": "japaneast",
+    "label": "Japan East · Tokyo"
+   },
+   {
+    "id": "brazilsouth",
+    "label": "Brazil South · São Paulo"
+   }
+  ],
+  "instances": [
+   {
+    "name": "L8s_v3",
+    "vcpu": 8,
+    "ram_gib": 64,
+    "drives": 1,
+    "drive_gb": 1920,
+    "iops": 60000,
+    "price_hour": 0.696
+   },
+   {
+    "name": "L16s_v3",
+    "vcpu": 16,
+    "ram_gib": 128,
+    "drives": 2,
+    "drive_gb": 1920,
+    "iops": 120000,
+    "price_hour": 1.392
+   },
+   {
+    "name": "L32s_v3",
+    "vcpu": 32,
+    "ram_gib": 256,
+    "drives": 4,
+    "drive_gb": 1920,
+    "iops": 240000,
+    "price_hour": 2.784
+   },
+   {
+    "name": "L48s_v3",
+    "vcpu": 48,
+    "ram_gib": 384,
+    "drives": 6,
+    "drive_gb": 1920,
+    "iops": 360000,
+    "price_hour": 4.176
+   },
+   {
+    "name": "L64s_v3",
+    "vcpu": 64,
+    "ram_gib": 512,
+    "drives": 8,
+    "drive_gb": 1920,
+    "iops": 480000,
+    "price_hour": 5.568
+   },
+   {
+    "name": "L80s_v3",
+    "vcpu": 80,
+    "ram_gib": 640,
+    "drives": 10,
+    "drive_gb": 1920,
+    "iops": 600000,
+    "price_hour": 6.96
+   }
+  ]
+ }
+]

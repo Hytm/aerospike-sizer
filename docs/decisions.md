@@ -100,3 +100,44 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 - Formulaire à gauche (charge, nœud générique, hypothèses), résultats à droite (nœuds, KPI, placement
   par rack, réseau), comparaison de coûts en pleine largeur dessous. Une recommandation dont on change les
   nœuds devient une configuration à part, gardée telle quelle.
+
+## T9 — Modèle aligné sur le guide de capacité Aerospike
+
+- Demande de l'utilisateur (2026-10-27) : un outil aussi juste et complet que possible, avec le
+  dimensionnement all-flash et les index secondaires. Constantes relues le 2026-10-27 dans le guide
+  « Capacity planning » (aerospike.com/docs/server/operations/plan/capacity) et « Secondary index
+  capacity planning » (aerospike.com/docs/database/manage/planning/capacity/secondary-indexes) ; les
+  exemples chiffrés du guide sont des tests (`internal/sizing/sizing_test.go`).
+- **Index primaire** : 64 B par copie en RAM. **All-flash** (`index-type flash`) : un sprig est un bloc
+  de 4 KiB de 64 entrées ; `partition-tree-sprigs` = enregistrements ÷ (64 × remplissage) ÷ 4096,
+  arrondi à la puissance de deux supérieure ; espace flash = 4096 partitions × RF × sprigs × 4 KiB,
+  plus 5 B par sprig (racines écrites à l'arrêt) ; 10 B de RAM par sprig (13 avant 5.7). Remplissage
+  50 % par défaut, comme l'exemple du guide (4 milliards d'enregistrements RF2 → 32 768 sprigs par
+  partition, 1 TiB sur flash, 2,5 GiB de RAM). L'IO de l'index flash est une estimation du sizer, pas
+  du guide : une lecture de bloc par lecture, une lecture et une écriture par copie écrite.
+- **Index secondaires** (6.0+) : 14 B par entrée (8 de valeur ou de hachage, 6 de référence) ×
+  sparseness 1,5 en moyenne (2 au pire) × RF ; une entrée par bin scalaire indexé, une par élément
+  distinct d'une liste ou d'une map ; saisie en « entrées par enregistrement, tous index confondus ».
+  En RAM ou sur flash (`sindex-type`). **Index de set** : 16 B par copie. Non comptés : 16 MiB
+  d'allocation initiale par index et par nœud, étages de 1 Gio (`sindex-stage-size`).
+- **Moteur mémoire** : enregistrements et index en RAM (même format qu'en 7.0+) ; « persisté » ajoute
+  les enregistrements sur disque et les IOPS d'écriture ; sans persistance, aucune IO disque.
+- **Disque** : le guide dit de planifier au plus 50 % d'usage avec `defrag-lwm-pct` par défaut →
+  plafond 50 % et surcoût d'écriture 0 par défaut (le 70 % + 10 % d'origine double-comptait la
+  défragmentation). Wellness garde ses propres plafonds (T22) et les transmet au sizer tels quels.
+  **Compression** (EE) : part de la taille stockée, disque seulement. **Surcoût d'enregistrement** : 0
+  par défaut, la taille saisie étant celle stockée (en-tête 39 B + bins, alignement 16 B selon le
+  guide) ; à renseigner quand on saisit la seule charge utile.
+- **Réserve OS** : 10 à 15 % de la RAM selon le guide → 10 % par défaut, avec un plancher de 5 Gio.
+- **Perte planifiée** : rien, un nœud (N+1) ou un rack (une AZ) : les plafonds tiennent sur les nœuds
+  restants (nœuds − ⌈nœuds ÷ racks⌉ pour un rack), pour le CPU et les IOPS comme pour la capacité,
+  comme le guide le demande pour le débit.
+- Non modélisé : pmem, tombstones (durable deletes, transactions SC), les 8 blocs d'écriture réservés
+  par device, le cache post-écriture.
+
+## T10 — Pré-remplissage par l'URL
+
+- `GET /?<chemin>=<valeur>…` : un paramètre par champ, nommé comme dans l'API (`workload.objects`,
+  `workload.index_on`, `hypotheses.growth`, `network.azs`, `node.ram_gib`…) ; `source` nomme l'origine
+  affichée, `back` (URL locale seulement) ramène à la page d'origine. C'est ainsi que Wellness renvoie
+  au sizer avec les paramètres d'un cluster (décision T29 de Wellness).

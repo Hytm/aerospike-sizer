@@ -51,7 +51,7 @@ func DefaultRequest() Request {
 		auto = append(auto, p.Key)
 	}
 	return Request{
-		Workload:   sizing.Workload{ObjectSize: 1024, Objects: 500e6, ReadsPerSec: 200000, WritesPerSec: 40000, RF: 2, Engine: sizing.Device},
+		Workload:   sizing.Workload{ObjectSize: 1024, Objects: 500e6, ReadsPerSec: 200000, WritesPerSec: 40000, RF: 2, Engine: sizing.Device, IndexOn: sizing.InRAM, SindexOn: sizing.InRAM},
 		Node:       Node{VCPU: 16, RAMGiB: 128, StorageTB: 3.75, IOPS: 200000},
 		Hypotheses: sizing.DefaultHypotheses(),
 		Network:    network.DefaultSettings(),
@@ -61,11 +61,13 @@ func DefaultRequest() Request {
 
 // Generic is the estimate on the generic node.
 type Generic struct {
-	Demand sizing.Amounts `json:"demand"` // whole cluster
+	Demand sizing.Detail  `json:"demand"` // whole cluster, with its parts
 	Node   sizing.Amounts `json:"node"`   // raw, per node
 	Usable sizing.Amounts `json:"usable"` // per node, at the ceilings
 	sizing.Sizing
-	Explain string `json:"explain"`
+	// Load is the demand over the usable capacity of the nodes left after the planned loss.
+	Load    map[sizing.Constraint]float64 `json:"load"`
+	Explain string                        `json:"explain"`
 }
 
 // Cost is the monthly cost of a configuration, list prices.
@@ -96,6 +98,7 @@ type Row struct {
 type Response struct {
 	Generic    Generic           `json:"generic"`
 	Layout     sizing.Layout     `json:"layout"`
+	Workload   sizing.Workload   `json:"workload"`   // as normalized
 	Hypotheses sizing.Hypotheses `json:"hypotheses"` // as normalized
 	Settings   network.Settings  `json:"settings"`   // as normalized: options their prerequisites rule out are off
 	Network    network.Traffic   `json:"network"`
@@ -128,12 +131,18 @@ func Compute(req Request, q Quoter) Response {
 	h := req.Hypotheses.Normalize()
 	s := req.Network.Normalize()
 	node := req.Node.Amounts()
-	c := computation{demand: sizing.DemandOf(w, h), hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w), quoter: q}
+	detail := sizing.Detailed(w, h)
+	c := computation{demand: detail.Amounts, hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w), quoter: q}
 
 	g := sizing.Size(c.demand, node, h, c.layout)
+	load := map[sizing.Constraint]float64{}
+	if g.Nodes > 0 {
+		load = sizing.Evaluate(c.demand, node, g.Nodes, h, c.layout).Load
+	}
 	resp := Response{
-		Generic:    Generic{Demand: c.demand, Node: node, Usable: h.Usable(node), Sizing: g, Explain: g.Explain(w, c.demand, node, h, c.layout)},
+		Generic:    Generic{Demand: detail, Node: node, Usable: h.Usable(node), Sizing: g, Load: load, Explain: g.Explain(w, detail, node, h, c.layout)},
 		Layout:     c.layout,
+		Workload:   w,
 		Hypotheses: h,
 		Settings:   s,
 		Network:    c.traffic,

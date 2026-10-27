@@ -73,13 +73,15 @@
     seg.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-v") === v); });
   }
 
-  // netFlags tells which network options apply: an option shows unchecked and disabled while its
-  // prerequisite is off, and the choice comes back with it.
+  // netFlags tells which options apply: a network option shows unchecked and disabled while its
+  // prerequisite is off, and the choice comes back with it; workload fields follow the engine and
+  // the indexes.
   function netFlags() {
-    var n = req.network, rack = n.azs > 1 && n.rack_aware, active = rack && n.active_rack;
+    var n = req.network, w = req.workload, rack = n.azs > 1 && n.rack_aware, active = rack && n.active_rack;
     return {
       az: n.mode === "az", region: n.mode === "region", rack: rack, active: active, local: rack && n.local_read,
-      activeRack: active, coLocated: active && n.client_placement === "single", compression: n.xdr_compression
+      activeRack: active, coLocated: active && n.client_placement === "single", compression: n.xdr_compression,
+      memory: w.engine === "memory", sindex: w.sindex_entries > 0
     };
   }
 
@@ -190,26 +192,40 @@
       '<span style="left:' + (ceiling * 100).toFixed(1) + '%" title="Ceiling ' + pct(ceiling) + '"></span></div>';
   }
 
+  var PARTS = {
+    storage: [["data", "records"], ["flash_index", "primary index on flash"], ["flash_sindex", "secondary indexes on flash"]],
+    ram: [["index", "primary index"], ["sprigs", "sprigs of the flash index"], ["sindex", "secondary indexes"], ["set_index", "set indexes"], ["data_ram", "records"]],
+    iops: [["read_iops", "record reads"], ["write_iops", "record writes with defrag"], ["index_iops", "flash index blocks"]]
+  };
+
+  // partsText lists what a demand is made of, when it has more than one part.
+  function partsText(key, d) {
+    var parts = (PARTS[key] || []).filter(function (p) { return d[p[0]] > 0; });
+    if (parts.length < 2) return "";
+    return parts.map(function (p) { return p[1] + " " + amount(key, d[p[0]]); }).join(" · ");
+  }
+
   function renderSizing(r) {
-    var g = r.generic, h = r.hypotheses, memory = req.workload.engine === "memory";
+    var g = r.generic, h = r.hypotheses, w = r.workload, d = g.demand;
     $("nodes").textContent = g.nodes || "—";
     var b = $("binding");
     b.className = "badge " + (g.nodes ? "sev-info" : "sev-critical");
     b.textContent = g.nodes ? BINDINGS[g.binding] : "No fit";
     $("explain").textContent = g.explain;
     var titles = {
-      storage: "Storage to place", ram: memory ? "Memory: data and index" : "Memory: primary index",
-      cpu: "CPU: " + count(req.workload.reads_per_sec + req.workload.writes_per_sec) + " tx/s", iops: "Device IOPS"
+      storage: "Storage to place", ram: w.index_on === "flash" ? "Memory (index on flash)" : "Memory",
+      cpu: "CPU: " + count(w.reads_per_sec + w.writes_per_sec) + " tx/s", iops: "Device IOPS"
     };
-    var serving = g.nodes - (h.node_loss && g.nodes > 1 ? 1 : 0);
     $("kpis").innerHTML = RESOURCES.map(function (res) {
-      var demand = g.demand[res.key], ceiling = h[res.ceiling];
+      var demand = d[res.key], ceiling = h[res.ceiling];
       if (!demand) {
-        return '<div class="kpi"><div class="l">' + titles[res.key] + '</div><div class="v">—</div><div class="n">' +
-          (res.key === "storage" && memory ? "Not used in memory mode" : "No demand") + "</div></div>";
+        var why = res.key === "storage" && w.engine === "memory" ? "Nothing on device in memory mode" : res.key === "iops" ? "No device operation" : "No demand";
+        return '<div class="kpi"><div class="l">' + titles[res.key] + '</div><div class="v">—</div><div class="n">' + why + "</div></div>";
       }
-      var util = g.utilization[res.key] || 0, load = g.nodes ? util * g.nodes / serving / ceiling : 0;
+      var util = g.utilization[res.key] || 0, load = g.load[res.key] || 0, parts = partsText(res.key, d);
+      if (res.key === "storage" && d.flash_index > 0) parts += " · partition-tree-sprigs " + d.sprigs_per_partition;
       return '<div class="kpi"><div class="l">' + titles[res.key] + '</div><div class="v">' + amount(res.key, demand) + "</div>" +
+        (parts ? '<div class="n">' + parts + "</div>" : "") +
         '<div class="n">' + g.need[res.key] + " nodes needed · " + amount(res.key, g.usable[res.key]) + " usable per node</div>" +
         (g.nodes ? gauge(util, ceiling, load) + '<div class="n">' + pct(util) + " used at peak · ceiling " + pct(ceiling) + "</div>" : "") +
         "</div>";
@@ -431,6 +447,37 @@
     changed();
   });
 
+  // applyQuery prefills the form from the URL: one parameter per field, named by its path
+  // (workload.objects=5e8, hypotheses.growth=0.2, network.azs=3), as Wellness links here; "source"
+  // names where the values come from and "back" (a local URL) links back to it.
+  function applyQuery() {
+    var params = new URLSearchParams(window.location.search), applied = 0;
+    params.forEach(function (value, key) {
+      var cur = getPath(req, key);
+      if (cur === undefined || cur === null || typeof cur === "object") return;
+      if (typeof cur === "number") {
+        var v = parseFloat(value);
+        if (isNaN(v)) return;
+        setPath(req, key, v);
+      } else if (typeof cur === "boolean") {
+        setPath(req, key, value === "1" || value === "true");
+      } else {
+        setPath(req, key, value);
+      }
+      applied++;
+    });
+    if (!applied) return;
+    var source = params.get("source") || "the link", back = params.get("back") || "", note = $("prefilled");
+    note.textContent = "Prefilled from " + source + ": " + applied + " value" + (applied > 1 ? "s" : "") + " of the form come from it. ";
+    if (/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(back)) {
+      var a = document.createElement("a");
+      a.href = back;
+      a.textContent = "Back to " + source;
+      note.appendChild(a);
+    }
+    note.hidden = false;
+  }
+
   // ---- Start ----
 
   fetch("/api/defaults").then(function (r) { return r.json(); }).then(function (d) {
@@ -446,6 +493,7 @@
     $("addProvider").innerHTML = options(providers, function (p) { return p.key; }, function (p) { return p.label; });
     fillAddForm();
     buildNetTable();
+    applyQuery();
     fillForm();
     send();
   }).catch(function (err) {

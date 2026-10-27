@@ -18,13 +18,20 @@ Requires Go 1.27. `make ci` runs the local checks (gofmt, vet, staticcheck, test
 
 What it computes:
 
-- **Nodes** from the workload (record size and count, reads and writes, RF, storage engine) on a generic
-  node, with Aerospike-minded ceilings: storage 70 % (stop-writes), RAM 70 % after the OS reserve, CPU 60 %,
-  one spare node (N+1), at least RF+1 nodes, the same number in every rack.
+- **Nodes** from the workload (record size and count, reads and writes, RF, storage engine with or
+  without persistence, primary index in RAM or on flash, secondary and set indexes) on a generic node,
+  with the ceilings of the Aerospike capacity planning guide: device usage 50 %, RAM 70 % after 10 % for
+  the OS, CPU 60 %, headroom for the loss of a node or a rack, at least RF+1 nodes, the same number in
+  every rack. All-flash sizing follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks,
+  10 B of RAM per sprig); secondary indexes count 14 B per entry at 1.5 sparseness.
 - **Replication traffic** across AZs (rack-awareness, Active Rack, Local read, client placement) or
   across regions with XDR, and its monthly cost per provider.
 - **Cost comparison**: each provider's cheapest comfortable configuration, plus the ones you add, with
   live on-demand prices for AWS and Azure in the chosen region and reference prices otherwise.
+
+The form can be prefilled from the URL, one parameter per field named as in the API
+(`/?workload.objects=4e9&workload.index_on=flash&hypotheses.growth=0.2`); Aerospike Wellness links here
+that way with the parameters of an analysed cluster.
 
 Every result is an estimate: the assumptions behind it are shown and editable in the interface.
 Verify prices and network rates against your provider's official calculator before any budget decision.

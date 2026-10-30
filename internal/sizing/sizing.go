@@ -124,6 +124,9 @@ const (
 	SprigRootBytes   = 5    // sprig roots written at shutdown, on disk
 	SetIndexBytes    = 16   // set index per record copy
 	MaxSprigsPerPart = 1 << 16
+	// DeviceBlockBytes is the unit device IO is counted in: the 4 KiB block the sustained random
+	// read IOPS of the catalog are measured with.
+	DeviceBlockBytes = 4096
 )
 
 // DefaultHypotheses follow the capacity planning guide: 64 B of primary index per copy, device usage
@@ -244,10 +247,11 @@ type Detail struct {
 	Sindex   float64 `json:"sindex"`    // secondary indexes in memory
 	SetIndex float64 `json:"set_index"` // set indexes
 	DataRAM  float64 `json:"data_ram"`  // records in memory
-	// IOPS parts.
-	ReadIOPS  float64 `json:"read_iops"`  // record reads reaching the device
-	WriteIOPS float64 `json:"write_iops"` // record writes, defragmentation included
-	IndexIOPS float64 `json:"index_iops"` // flash index blocks read and written
+	// IOPS parts, in 4 KiB blocks.
+	ReadIOPS      float64 `json:"read_iops"`       // record reads reaching the device
+	WriteIOPS     float64 `json:"write_iops"`      // bytes of the record writes, defragmentation included
+	IndexIOPS     float64 `json:"index_iops"`      // flash index blocks read and written
+	BlocksPerRead float64 `json:"blocks_per_read"` // device blocks one record read fetches
 	// SprigsPerPartition is the partition-tree-sprigs an all-flash namespace needs.
 	SprigsPerPartition int `json:"sprigs_per_partition"`
 }
@@ -259,16 +263,21 @@ func Detailed(w Workload, h Hypotheses) Detail {
 	copies := objects * float64(w.RF)
 	record := (w.ObjectSize + h.RecordOverhead) * copies
 	onDevice := record * (1 + h.WriteOverhead) * h.Compression
+	stored := (w.ObjectSize + h.RecordOverhead) * h.Compression // one record copy on the device
 	var d Detail
 	if w.Engine == Memory {
 		d.DataRAM = record
 	}
 	if w.OnDevice() {
 		d.Data = onDevice
-		d.WriteIOPS = w.WritesPerSec * float64(w.RF) * h.DefragMult
+		// Records fill 8 MiB write blocks: the device writes the bytes of every copy, counted in
+		// 4 KiB blocks whatever the record size.
+		d.WriteIOPS = w.WritesPerSec * float64(w.RF) * stored * h.DefragMult / DeviceBlockBytes
 	}
 	if w.Engine == Device {
-		d.ReadIOPS = w.ReadsPerSec * (1 - h.CacheHit)
+		// A read fetches the 4 KiB blocks its record spans.
+		d.BlocksPerRead = max(math.Ceil(stored/DeviceBlockBytes), 1)
+		d.ReadIOPS = w.ReadsPerSec * (1 - h.CacheHit) * d.BlocksPerRead
 	}
 	if w.IndexOn == OnFlash {
 		// Sprigs per partition: records over 64 entries at the fill share, over the partitions,

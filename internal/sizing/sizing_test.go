@@ -25,7 +25,8 @@ func TestDemandCountsEveryCopyWithOverheadAndGrowth(t *testing.T) {
 	if want := 500e6 * 2 * 64 * 1.3; !near(d.RAM, want) {
 		t.Errorf("RAM = %v, want %v (index only on device)", d.RAM, want)
 	}
-	if want := (40000*2*1.3 + 200000*0.3) * 1.3; !near(d.IOPS, want) {
+	// 1 KiB records: a quarter of a 4 KiB block per copy written, one block per read.
+	if want := (40000*2*1024.0/4096*1.3 + 200000*0.3) * 1.3; !near(d.IOPS, want) || d.BlocksPerRead != 1 {
 		t.Errorf("IOPS = %v, want %v (throughput grows too)", d.IOPS, want)
 	}
 	if want := 240000 * 1.3 / 15000.0; !near(d.CPU, want) || !near(d.TPS, 240000*1.3) {
@@ -35,8 +36,8 @@ func TestDemandCountsEveryCopyWithOverheadAndGrowth(t *testing.T) {
 		t.Errorf("grown workload = %+v", grown)
 	}
 	h.RecordOverhead, h.Compression = 56, 0.5
-	if d := DemandOf(workload(), h); !near(d.Storage, 1080*500e6*2*1.1*1.3*0.5) {
-		t.Errorf("with overhead and compression, storage = %v", d.Storage)
+	if d := DemandOf(workload(), h); !near(d.Storage, 1080*500e6*2*1.1*1.3*0.5) || !near(d.IOPS, (40000*2*540.0/4096*1.3+200000*0.3)*1.3) {
+		t.Errorf("with overhead and compression, storage = %v, IOPS = %v", d.Storage, d.IOPS)
 	}
 }
 
@@ -50,8 +51,34 @@ func TestMemoryEngineKeepsRecordsInRAMAndPersistsThemOnRequest(t *testing.T) {
 	}
 	w.Persist = true
 	d = Detailed(w, h)
-	if !near(d.Storage, 1024*500e6*2*1.3) || !near(d.IOPS, 40000*2*1.3*1.3) || d.ReadIOPS != 0 {
+	if !near(d.Storage, 1024*500e6*2*1.3) || !near(d.IOPS, 40000*2*1024.0/4096*1.3*1.3) || d.ReadIOPS != 0 {
 		t.Errorf("persisted memory engine demand = %+v", d)
+	}
+}
+
+// Device IO is counted in 4 KiB blocks, as in the Aerospike sizing estimator spreadsheet: a read
+// fetches every block its record spans, a write puts the bytes of every copy into 8 MiB write blocks.
+func TestDeviceIOCountsBlocks(t *testing.T) {
+	h := DefaultHypotheses()
+	h.Growth, h.CacheHit, h.DefragMult, h.RecordOverhead = 0, 0, 1, 64
+	// 12,064 B stored span 3 blocks; 2 copies × 1,000 writes/s × 12,064 B = 5,890.6 blocks/s.
+	large := Workload{ObjectSize: 12000, Objects: 1e6, ReadsPerSec: 50000, WritesPerSec: 1000, RF: 2, Engine: Device, IndexOn: InRAM}
+	if d := Detailed(large, h); d.BlocksPerRead != 3 || !near(d.ReadIOPS, 150000) || !near(d.WriteIOPS, 2*1000*12064/4096.0) {
+		t.Errorf("large records: %v blocks per read, read %v, write %v", d.BlocksPerRead, d.ReadIOPS, d.WriteIOPS)
+	}
+	// 364 B stored: one block per read; 50,000 writes/s × 2 copies write 8,887 blocks/s, not 100,000.
+	small := Workload{ObjectSize: 300, Objects: 1e6, ReadsPerSec: 50000, WritesPerSec: 50000, RF: 2, Engine: Device, IndexOn: InRAM}
+	d := Detailed(small, h)
+	if d.BlocksPerRead != 1 || !near(d.ReadIOPS, 50000) || !near(d.WriteIOPS, 2*50000*364/4096.0) {
+		t.Errorf("small records: %v blocks per read, read %v, write %v", d.BlocksPerRead, d.ReadIOPS, d.WriteIOPS)
+	}
+	h.Compression = 0.25 // 3,016 B stored: one block
+	if d := Detailed(large, h); d.BlocksPerRead != 1 || !near(d.WriteIOPS, 2*1000*3016/4096.0) {
+		t.Errorf("compressed large records: %v blocks per read, write %v", d.BlocksPerRead, d.WriteIOPS)
+	}
+	e := (Sizing{Nodes: 3, Binding: ByIOPS}).Explain(large, Detailed(large, DefaultHypotheses()), Amounts{IOPS: 1e5}, DefaultHypotheses(), Layout{RF: 2})
+	if !strings.Contains(e, "IOPS of 4 KiB") || !strings.Contains(e, "record reads of 3 blocks") {
+		t.Errorf("explanation = %q", e)
 	}
 }
 

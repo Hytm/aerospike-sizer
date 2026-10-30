@@ -179,7 +179,7 @@ func (s Sizing) Explain(w Workload, d Detail, node Amounts, h Hypotheses, l Layo
 	case ByCPU:
 		fmt.Fprintf(&b, "CPU drives the sizing: %s transactions/s at the horizon (%s growth) need %s at %s per vCPU, %s usable per node (%s).", units.Count(d.TPS), units.Pct(h.Growth), ByCPU.amount(d.CPU), units.Count(h.OpsPerVCPU), ByCPU.amount(usable.CPU), h.ceilingText(ByCPU))
 	case ByIOPS:
-		fmt.Fprintf(&b, "Device throughput drives the sizing: %s sustained IOPS (%s; %s), %s usable per node (%s).", units.Count(d.IOPS), d.iopsParts(), scope, units.Count(usable.IOPS), h.ceilingText(ByIOPS))
+		fmt.Fprintf(&b, "Device throughput drives the sizing: %s IOPS of 4 KiB (%s; %s), %s usable per node (%s).", units.Count(d.IOPS), d.iopsParts(), scope, units.Count(usable.IOPS), h.ceilingText(ByIOPS))
 	default:
 		fmt.Fprintf(&b, "Storage, RAM, CPU and IOPS fit on fewer nodes: the topology floor (RF+1 = %d) sets the minimum for fault tolerance.", l.MinNodes())
 	}
@@ -231,8 +231,12 @@ func (d Detail) iopsParts() string {
 			parts = append(parts, label+" "+units.Count(v))
 		}
 	}
-	add("record reads", d.ReadIOPS)
-	add("record writes with defrag", d.WriteIOPS)
+	reads := "record reads"
+	if d.BlocksPerRead > 1 {
+		reads = fmt.Sprintf("record reads of %.0f blocks", d.BlocksPerRead)
+	}
+	add(reads, d.ReadIOPS)
+	add("record writes in 4 KiB blocks with defrag", d.WriteIOPS)
 	add("flash index blocks", d.IndexIOPS)
 	return strings.Join(parts, ", ")
 }

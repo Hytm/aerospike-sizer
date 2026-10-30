@@ -16,7 +16,7 @@ type Instance struct {
 	RAMGiB    float64 `json:"ram_gib"`
 	Drives    int     `json:"drives"`
 	DriveGB   float64 `json:"drive_gb"`   // decimal GB, as providers publish
-	IOPS      float64 `json:"iops"`       // sustained planning IOPS per node
+	IOPS      float64 `json:"iops"`       // sustained planning IOPS per node, 4 KiB random reads
 	PriceHour float64 `json:"price_hour"` // reference on-demand Linux price in PricesRegion
 }
 

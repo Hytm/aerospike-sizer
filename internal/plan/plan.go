@@ -17,7 +17,7 @@ type Node struct {
 	VCPU      float64 `json:"vcpu"`
 	RAMGiB    float64 `json:"ram_gib"`
 	StorageTB float64 `json:"storage_tb"` // raw NVMe, decimal TB
-	IOPS      float64 `json:"iops"`       // sustained planning IOPS
+	IOPS      float64 `json:"iops"`       // sustained planning IOPS, 4 KiB random reads
 }
 
 // Amounts returns the raw resources of the node.

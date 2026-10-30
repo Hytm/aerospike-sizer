@@ -224,6 +224,7 @@
       }
       var util = g.utilization[res.key] || 0, load = g.load[res.key] || 0, parts = partsText(res.key, d);
       if (res.key === "storage" && d.flash_index > 0) parts += " · partition-tree-sprigs " + d.sprigs_per_partition;
+      if (res.key === "iops" && d.blocks_per_read > 1) parts += (parts ? " · " : "") + d.blocks_per_read + " blocks of 4 KiB per read";
       return '<div class="kpi"><div class="l">' + titles[res.key] + '</div><div class="v">' + amount(res.key, demand) + "</div>" +
         (parts ? '<div class="n">' + parts + "</div>" : "") +
         '<div class="n">' + g.need[res.key] + " nodes needed · " + amount(res.key, g.usable[res.key]) + " usable per node</div>" +

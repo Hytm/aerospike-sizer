@@ -24,7 +24,7 @@ What it computes:
   device IOPS, replication traffic), and the ceilings of the Aerospike capacity planning guide: device
   usage 50 %, RAM 70 % after 10 % for the OS (5 GiB at least), CPU 60 %, headroom for the loss of a node
   or a rack, at least RF+1 nodes, the same number in every rack. Aerospike Wellness sizes with the same
-  conventions, device IO aside until it counts it in blocks too. Device IO is counted in 4 KiB blocks, the unit of the instances' sustained IOPS: a read
+  conventions. Device IO is counted in 4 KiB blocks, the unit of the instances' sustained IOPS: a read
   fetches the blocks its record spans, a write the bytes of every copy (records fill 8 MiB write blocks).
   All-flash sizing follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks,
   10 B of RAM per sprig); secondary indexes count 14 B per entry at 1.5 sparseness.

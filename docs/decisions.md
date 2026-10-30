@@ -191,8 +191,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   seconde à l'échelle du cluster (au plus 2 048 IOPS de plus), ne compte ni cache ni défragmentation
   (hypothèses du sizer, modifiables), compte 5 IO par copie écrite avec l'index sur flash (2 ici) et
   multiplie une seconde fois par le RF les IOPS d'écriture de son total.
-- Wellness compte encore une IO par opération : tant qu'il n'est pas aligné, les deux outils peuvent
-  différer quand les IOPS dimensionnent (T11).
+- Wellness compte de même depuis sa décision T34 (2026-10-30), à partir de la taille moyenne mesurée
+  telle que stockée (transmise avec un surcoût de 0 et une compression de 1) : les deux outils donnent
+  le même nombre de nœuds quand les IOPS dimensionnent (T11), index primaire en RAM (wellness ne compte
+  pas d'IO pour l'index sur flash).
 - Effet sur l'exemple par défaut (500 M × 1 Kio, 200 000 lectures/s + 40 000 écritures/s, +30 %) :
   213 200 → 111 800 IOPS (écritures 135 200 → 33 800) ; nœuds et recommandations inchangés (le CPU
   dimensionne).

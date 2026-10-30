@@ -171,3 +171,28 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   le trafic suit donc la croissance sans que le paquet réseau la connaisse.
 - Le nombre d'AZ accepté par l'API passe de 6 à 12 (`network.Settings.Normalize`), pour qu'un cluster
   rack-aware de plus de six racks analysé par wellness arrondisse ses nœuds aux mêmes racks ici.
+
+## T12 — IO disque comptée en blocs de 4 Kio
+
+- Demande de l'utilisateur (2026-10-30), après comparaison avec la feuille « Aerospike Sizing
+  Estimator » : le sizer comptait une IO par lecture et une par copie écrite, quelle que soit la taille
+  des enregistrements. Il sous-estimait la lecture des gros enregistrements (12 Ko : 3 blocs, comptés 1)
+  et surestimait l'écriture des petits (300 o × RF2 : moins d'un dixième de bloc, compté 2).
+- L'unité est le bloc de 4 Kio, celle des IOPS soutenues du catalogue (lectures aléatoires de 4 Kio).
+  Taille stockée d'une copie = (taille + surcoût) × compression.
+  - **Lecture** : ⌈taille stockée ÷ 4 Kio⌉ blocs (`blocks_per_read`), × (1 − cache).
+  - **Écriture** : les enregistrements remplissent des blocs d'écriture de 8 Mio, le disque écrit leurs
+    octets : écritures × RF × taille stockée ÷ 4 Kio × défragmentation.
+  - Index flash inchangé (des blocs de 4 Kio déjà).
+- Pas de contrainte de débit (Mo/s) séparée : comptées en blocs de 4 Kio, les IOPS bornent aussi le
+  débit (IOPS × 4 Kio), et aucune source ne donne le débit soutenu de chaque instance (la feuille prend
+  1 500 Mo/s par disque pour toutes).
+- Écarts restants avec la feuille, voulus : elle arrondit les écritures à des blocs de 8 Mio entiers par
+  seconde à l'échelle du cluster (au plus 2 048 IOPS de plus), ne compte ni cache ni défragmentation
+  (hypothèses du sizer, modifiables), compte 5 IO par copie écrite avec l'index sur flash (2 ici) et
+  multiplie une seconde fois par le RF les IOPS d'écriture de son total.
+- Wellness compte encore une IO par opération : tant qu'il n'est pas aligné, les deux outils peuvent
+  différer quand les IOPS dimensionnent (T11).
+- Effet sur l'exemple par défaut (500 M × 1 Kio, 200 000 lectures/s + 40 000 écritures/s, +30 %) :
+  213 200 → 111 800 IOPS (écritures 135 200 → 33 800) ; nœuds et recommandations inchangés (le CPU
+  dimensionne).

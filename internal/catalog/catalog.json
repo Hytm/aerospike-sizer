@@ -152,6 +152,51 @@
   ],
   "instances": [
    {
+    "name": "c4a-standard-4-lssd",
+    "vcpu": 4,
+    "ram_gib": 16,
+    "drives": 1,
+    "drive_gb": 402.65,
+    "iops": 37500,
+    "price_hour": 0.2412
+   },
+   {
+    "name": "c4a-highmem-4-lssd",
+    "vcpu": 4,
+    "ram_gib": 32,
+    "drives": 1,
+    "drive_gb": 402.65,
+    "iops": 37500,
+    "price_hour": 0.2974
+   },
+   {
+    "name": "c4a-standard-8-lssd",
+    "vcpu": 8,
+    "ram_gib": 32,
+    "drives": 2,
+    "drive_gb": 402.65,
+    "iops": 75000,
+    "price_hour": 0.4824
+   },
+   {
+    "name": "c4a-highmem-8-lssd",
+    "vcpu": 8,
+    "ram_gib": 64,
+    "drives": 2,
+    "drive_gb": 402.65,
+    "iops": 75000,
+    "price_hour": 0.5948
+   },
+   {
+    "name": "c4a-standard-16-lssd",
+    "vcpu": 16,
+    "ram_gib": 64,
+    "drives": 4,
+    "drive_gb": 402.65,
+    "iops": 150000,
+    "price_hour": 0.9648
+   },
+   {
     "name": "z3-highmem-8-highlssd",
     "vcpu": 8,
     "ram_gib": 64,
@@ -159,6 +204,33 @@
     "drive_gb": 3000,
     "iops": 50000,
     "price_hour": 1.1519
+   },
+   {
+    "name": "c4a-highmem-16-lssd",
+    "vcpu": 16,
+    "ram_gib": 128,
+    "drives": 4,
+    "drive_gb": 402.65,
+    "iops": 150000,
+    "price_hour": 1.1896
+   },
+   {
+    "name": "c4a-standard-32-lssd",
+    "vcpu": 32,
+    "ram_gib": 128,
+    "drives": 6,
+    "drive_gb": 402.65,
+    "iops": 225000,
+    "price_hour": 1.8064
+   },
+   {
+    "name": "c4a-highmem-32-lssd",
+    "vcpu": 32,
+    "ram_gib": 256,
+    "drives": 6,
+    "drive_gb": 402.65,
+    "iops": 225000,
+    "price_hour": 2.256
    },
    {
     "name": "z3-highmem-16-highlssd",
@@ -170,6 +242,15 @@
     "price_hour": 2.3039
    },
    {
+    "name": "c4a-standard-48-lssd",
+    "vcpu": 48,
+    "ram_gib": 192,
+    "drives": 10,
+    "drive_gb": 402.65,
+    "iops": 375000,
+    "price_hour": 2.7712
+   },
+   {
     "name": "z3-highmem-22-highlssd",
     "vcpu": 22,
     "ram_gib": 176,
@@ -179,6 +260,33 @@
     "price_hour": 3.25
    },
    {
+    "name": "c4a-highmem-48-lssd",
+    "vcpu": 48,
+    "ram_gib": 384,
+    "drives": 10,
+    "drive_gb": 402.65,
+    "iops": 375000,
+    "price_hour": 3.4456
+   },
+   {
+    "name": "c4a-standard-64-lssd",
+    "vcpu": 64,
+    "ram_gib": 256,
+    "drives": 14,
+    "drive_gb": 402.65,
+    "iops": 525000,
+    "price_hour": 3.736
+   },
+   {
+    "name": "c4a-standard-72-lssd",
+    "vcpu": 72,
+    "ram_gib": 288,
+    "drives": 16,
+    "drive_gb": 402.65,
+    "iops": 600000,
+    "price_hour": 4.2184
+   },
+   {
     "name": "z3-highmem-32-highlssd",
     "vcpu": 32,
     "ram_gib": 256,
@@ -186,6 +294,24 @@
     "drive_gb": 3000,
     "iops": 200000,
     "price_hour": 4.6077
+   },
+   {
+    "name": "c4a-highmem-64-lssd",
+    "vcpu": 64,
+    "ram_gib": 512,
+    "drives": 14,
+    "drive_gb": 402.65,
+    "iops": 525000,
+    "price_hour": 4.6352
+   },
+   {
+    "name": "c4a-highmem-72-lssd",
+    "vcpu": 72,
+    "ram_gib": 576,
+    "drives": 16,
+    "drive_gb": 402.65,
+    "iops": 600000,
+    "price_hour": 5.23
    },
    {
     "name": "z3-highmem-44-highlssd",

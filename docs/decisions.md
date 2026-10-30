@@ -198,3 +198,22 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 - Effet sur l'exemple par défaut (500 M × 1 Kio, 200 000 lectures/s + 40 000 écritures/s, +30 %) :
   213 200 → 111 800 IOPS (écritures 135 200 → 33 800) ; nœuds et recommandations inchangés (le CPU
   dimensionne).
+
+## T13 — Instances GCP Axion (C4A, ARM) avec Titanium SSD
+
+- Demande de l'utilisateur (2026-10-30) : dimensionner sur GCP en privilégiant les instances ARM. Le
+  catalogue GCP n'avait que des Z3 (x86) ; il gagne les `c4a-standard-*-lssd` et `c4a-highmem-*-lssd`
+  (Google Axion, arm64) de 4 à 72 vCPU : 4 Gio (standard) ou 8 Gio (highmem) par vCPU, 1 à 16 disques
+  Titanium SSD de 375 Gio (402,65 Go) selon la taille (doc Compute Engine, « Local SSD », table C4A).
+- Prix de référence us-east1 à la demande, comme le reste du catalogue GCP : 0,03085 $ par vCPU·h,
+  0,0035125 $ par Gio·h et 0,0616 $ par disque·h (0,000164 $ par Gio·h, SSD obligatoire et facturé en
+  plus de la machine). Décomposition tirée des prix publiés (gcloud-compute.com, 2026-10-30) des
+  c4a-highmem-16 (0,943 $/h ; -lssd 1,1896 $/h), c4a-highmem-72-lssd (5,23 $/h), c4a-standard-4
+  (0,1796 $/h) et c4a-highcpu-4 (0,1515 $/h), et vérifiée sur la c4a-highmem-32-lssd (2,2559 $/h publié,
+  2,2560 $/h calculé). Prix identiques en us-central1.
+- IOPS de planification : la moitié des IOPS d'écriture aléatoire publiées, soit 37 500 par disque
+  (150 000 en lecture et 75 000 en écriture publiés par disque). Hypothèse prudente, faute de mesure
+  ACT pour ces disques ; à revoir avec une mesure.
+- Les instances d'un fournisseur restent triées par prix : C4A et Z3 s'intercalent.
+- Effet sur l'exemple par défaut : GCP recommande c4a-highmem-4-lssd × 12 (7 270 $/mois) au lieu de
+  z3-highmem-22-highlssd × 3 (11 782 $/mois) ; AWS et Azure inchangés.

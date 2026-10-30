@@ -36,3 +36,25 @@ func TestUnits(t *testing.T) {
 		t.Errorf("storage %v, RAM %v", i.StorageBytes(), i.RAMBytes())
 	}
 }
+
+// TestGCPAxion checks the C4A types against the published shapes and us-east1 prices (decision T13).
+func TestGCPAxion(t *testing.T) {
+	p, _ := Get("gcp")
+	for name, want := range map[string]Instance{
+		"c4a-highmem-16-lssd": {VCPU: 16, RAMGiB: 128, Drives: 4, PriceHour: 1.1896},
+		"c4a-highmem-32-lssd": {VCPU: 32, RAMGiB: 256, Drives: 6, PriceHour: 2.256},
+		"c4a-highmem-72-lssd": {VCPU: 72, RAMGiB: 576, Drives: 16, PriceHour: 5.23},
+	} {
+		i, ok := p.Instance(name)
+		if !ok {
+			t.Errorf("%s missing", name)
+			continue
+		}
+		if i.VCPU != want.VCPU || i.RAMGiB != want.RAMGiB || i.Drives != want.Drives || i.PriceHour != want.PriceHour {
+			t.Errorf("%s: %+v, want %+v", name, i, want)
+		}
+		if gib := i.DriveGB * 1e9 / GiB; gib < 374.9 || gib > 375.1 {
+			t.Errorf("%s: %v GiB per Titanium SSD, want 375", name, gib)
+		}
+	}
+}

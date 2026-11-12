@@ -20,10 +20,24 @@ type Node struct {
 	IOPS      float64 `json:"iops"`       // sustained planning IOPS, 4 KiB random reads
 }
 
+// Bounds of the generic node: the largest values an estimate accepts, so that every figure stays
+// finite whatever the request says.
+const (
+	MaxNodeVCPU      = 1e5
+	MaxNodeRAMGiB    = 1e6
+	MaxNodeStorageTB = 1e5
+	MaxNodeIOPS      = 1e9
+)
+
 // Amounts returns the raw resources of the node.
 func (n Node) Amounts() sizing.Amounts {
-	return sizing.Amounts{Storage: max(n.StorageTB, 0) * 1e12, RAM: max(n.RAMGiB, 0) * catalog.GiB, CPU: max(n.VCPU, 0), IOPS: max(n.IOPS, 0)}
+	return sizing.Amounts{
+		Storage: bounded(n.StorageTB, MaxNodeStorageTB) * 1e12, RAM: bounded(n.RAMGiB, MaxNodeRAMGiB) * catalog.GiB,
+		CPU: bounded(n.VCPU, MaxNodeVCPU), IOPS: bounded(n.IOPS, MaxNodeIOPS),
+	}
 }
+
+func bounded(v, hi float64) float64 { return min(max(v, 0), hi) }
 
 // RowRequest is a configuration the user added to the comparison.
 type RowRequest struct {
@@ -66,8 +80,11 @@ type Generic struct {
 	Usable sizing.Amounts `json:"usable"` // per node, at the ceilings
 	sizing.Sizing
 	// Load is the demand over the usable capacity of the nodes left after the planned loss.
-	Load    map[sizing.Constraint]float64 `json:"load"`
-	Explain string                        `json:"explain"`
+	Load map[sizing.Constraint]float64 `json:"load"`
+	// Checks are the fit's remarks on the node count when it is not comfortable: a topology rule
+	// the count misses, a tight resource.
+	Checks  []string `json:"checks"`
+	Explain string   `json:"explain"`
 }
 
 // Cost is the monthly cost of a configuration, list prices.
@@ -89,7 +106,7 @@ type Row struct {
 	Fit      sizing.Fit       `json:"fit"`
 	Price    pricing.Quote    `json:"price"`
 	Cost     Cost             `json:"cost"`
-	// Alternative is the smallest instance type that fits comfortably with as many nodes, offered
+	// Alternative is the cheapest instance type that fits comfortably with as many nodes, offered
 	// when this configuration is tight or insufficient and another shape solves it.
 	Alternative *Row `json:"alternative,omitempty"`
 }
@@ -105,16 +122,12 @@ type Response struct {
 	Rows       []Row             `json:"rows"`
 	Pending    bool              `json:"pending"` // live prices are being looked up: ask again shortly
 	Notes      []string          `json:"notes"`
-	Defaults   sizing.Hypotheses `json:"defaults"`
 }
 
 // Quoter prices one node; *pricing.Book implements it.
 type Quoter interface {
 	Quote(provider, region string, inst catalog.Instance) pricing.Quote
 }
-
-// hoursPerMonth turns hourly prices into monthly ones, as providers do.
-const hoursPerMonth = 730
 
 // computation carries what every row is evaluated against.
 type computation struct {
@@ -135,12 +148,16 @@ func Compute(req Request, q Quoter) Response {
 	c := computation{demand: detail.Amounts, hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w.Grown(h)), quoter: q}
 
 	g := sizing.Size(c.demand, node, h, c.layout)
-	load := map[sizing.Constraint]float64{}
+	generic := Generic{Demand: detail, Node: node, Usable: h.Usable(node), Sizing: g, Load: map[sizing.Constraint]float64{}, Checks: []string{}, Explain: g.Explain(w, detail, node, h, c.layout)}
 	if g.Nodes > 0 {
-		load = sizing.Evaluate(c.demand, node, g.Nodes, h, c.layout).Load
+		fit := sizing.Evaluate(c.demand, node, g.Nodes, h, c.layout)
+		generic.Load = fit.Load
+		if fit.Status != sizing.OK {
+			generic.Checks = fit.Checks
+		}
 	}
 	resp := Response{
-		Generic:    Generic{Demand: detail, Node: node, Usable: h.Usable(node), Sizing: g, Load: load, Explain: g.Explain(w, detail, node, h, c.layout)},
+		Generic:    generic,
 		Layout:     c.layout,
 		Workload:   w,
 		Hypotheses: h,
@@ -148,7 +165,9 @@ func Compute(req Request, q Quoter) Response {
 		Network:    c.traffic,
 		Rows:       []Row{},
 		Notes:      []string{},
-		Defaults:   sizing.DefaultHypotheses(),
+	}
+	if h.Loss == sizing.RackLoss && c.layout.Racks == 1 {
+		resp.Notes = append(resp.Notes, "The ceilings are kept after the loss of one node: losing a whole rack can only be planned for with rack-aware AZs in a single region.")
 	}
 	for i := range catalog.Providers {
 		p := &catalog.Providers[i]
@@ -192,16 +211,15 @@ func (c computation) row(id string, auto bool, p *catalog.Provider, region catal
 		return r
 	}
 	if alt, ok := sizing.Comfortable(p, c.demand, c.hyp, c.layout, nodes); ok && alt.Name != inst.Name {
-		if a := c.evaluate(id+"/alt", false, p, region, alt, nodes); a.Fit.Status == sizing.OK {
-			r.Alternative = &a
-		}
+		a := c.evaluate(id+"/alt", false, p, region, alt, nodes)
+		r.Alternative = &a
 	}
 	return r
 }
 
 func (c computation) evaluate(id string, auto bool, p *catalog.Provider, region catalog.Region, inst catalog.Instance, nodes int) Row {
 	price := c.quoter.Quote(p.Key, region.ID, inst)
-	cost := Cost{Compute: price.Hourly * float64(nodes) * hoursPerMonth * float64(c.traffic.Clusters), Network: c.traffic.Costs[p.Key], Clusters: c.traffic.Clusters}
+	cost := Cost{Compute: price.Hourly * float64(nodes) * catalog.HoursPerMonth * float64(c.traffic.Clusters), Network: c.traffic.Costs[p.Key], Clusters: c.traffic.Clusters}
 	cost.Total = cost.Compute + cost.Network
 	return Row{
 		ID: id, Auto: auto, Provider: p.Key, Region: region, Instance: inst, Nodes: nodes,

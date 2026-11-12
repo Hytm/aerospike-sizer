@@ -20,11 +20,9 @@ const (
 
 func (s Status) rank() int { return map[Status]int{OK: 0, Tight: 1, Short: 2}[s] }
 
-// Load thresholds, as a share of the usable capacity.
-const (
-	TightLoad   = 0.85 // above: tight
-	ComfortLoad = 0.8  // a comfortable alternative stays under it
-)
+// TightLoad is the load, as a share of the usable capacity, above which a configuration is tight;
+// a comfortable one keeps every load under it.
+const TightLoad = 0.85
 
 // Fit tells how a number of nodes of one shape holds the demand.
 type Fit struct {
@@ -100,11 +98,15 @@ type Option struct {
 	Nodes    int              `json:"nodes"`
 }
 
+// nodePenaltyPer is the node count that doubles the price of a configuration in the
+// recommendation score (+2 % per node): dozens of small nodes must not win over a sensible
+// cluster (the aerospike-wellness penalty).
+const nodePenaltyPer = 50
+
 // Recommend returns the cheapest comfortable configuration of the provider for the demand
 // (reference prices, every load under TightLoad), else the cheapest one that holds. Nodes are added
-// to a shape while that is cheaper than a larger one, with a penalty on large node counts so that
-// dozens of small nodes do not win over a sensible cluster. ok is false when no instance type suits
-// the demand.
+// to a shape while that is cheaper than a larger one, with a penalty on large node counts. ok is
+// false when no instance type suits the demand.
 func Recommend(p *catalog.Provider, d Amounts, h Hypotheses, l Layout) (Option, bool) {
 	var comfortable, holding candidate
 	for _, inst := range p.Instances {
@@ -113,7 +115,7 @@ func Recommend(p *catalog.Provider, d Amounts, h Hypotheses, l Layout) (Option, 
 			continue
 		}
 		holding.consider(inst, s.Nodes)
-		if n, ok := comfortableNodes(d, OfInstance(inst), s.Nodes, h, l); ok {
+		if n, ok := comfortableNodes(d, OfInstance(inst), h, l); ok {
 			comfortable.consider(inst, n)
 		}
 	}
@@ -130,30 +132,39 @@ type candidate struct {
 }
 
 func (c *candidate) consider(inst catalog.Instance, nodes int) {
-	score := inst.PriceHour * float64(nodes) * (1 + float64(nodes)/50)
+	score := inst.PriceHour * float64(nodes) * (1 + float64(nodes)/nodePenaltyPer)
 	if !c.found || score < c.score {
 		*c = candidate{Option: Option{Instance: inst, Nodes: nodes}, score: score, found: true}
 	}
 }
 
-// comfortableNodes returns the fewest nodes from a count on (in steps of whole racks) that fit
-// comfortably.
-func comfortableNodes(d, node Amounts, from int, h Hypotheses, l Layout) (int, bool) {
-	step := max(l.Racks, 1)
-	for n := from; n <= MaxNodes && n < from+64*step; n += step {
+// comfortableNodes returns the fewest nodes of a shape that fit comfortably: the count the demand
+// divided by the tight threshold needs, one per AZ at least, confirmed by Evaluate.
+func comfortableNodes(d, node Amounts, h Hypotheses, l Layout) (int, bool) {
+	s := Size(d.Scaled(TightLoad), node, h, l)
+	if s.Nodes == 0 {
+		return 0, false
+	}
+	n := max(s.Nodes, l.AZs)
+	// The rounding of the loads may leave the count one rack short.
+	for range 2 {
+		if n > MaxNodes {
+			return 0, false
+		}
 		if Evaluate(d, node, n, h, l).Status == OK {
 			return n, true
 		}
+		n += max(l.Racks, 1)
 	}
 	return 0, false
 }
 
-// Comfortable returns the smallest instance type of the provider that keeps every load under
-// ComfortLoad with the given node count.
+// Comfortable returns the cheapest instance type of the provider that fits comfortably with the
+// given node count (every load under TightLoad, the topology rules met): the catalog lists the
+// instances of a provider by price.
 func Comfortable(p *catalog.Provider, d Amounts, h Hypotheses, l Layout, nodes int) (catalog.Instance, bool) {
 	for _, inst := range p.Instances {
-		f := Evaluate(d, OfInstance(inst), nodes, h, l)
-		if len(f.Load) > 0 && f.MaxLoad() <= ComfortLoad {
+		if Evaluate(d, OfInstance(inst), nodes, h, l).Status == OK {
 			return inst, true
 		}
 	}
@@ -199,12 +210,20 @@ func (d Detail) storageParts() string {
 		parts = append(parts, "records "+units.SI(d.Data))
 	}
 	if d.FlashIndex > 0 {
-		parts = append(parts, fmt.Sprintf("primary index on flash %s with %d sprigs per partition", units.SI(d.FlashIndex), d.SprigsPerPartition))
+		parts = append(parts, fmt.Sprintf("primary index on flash %s with %d sprigs per partition%s", units.SI(d.FlashIndex), d.SprigsPerPartition, d.sprigsNote()))
 	}
 	if d.FlashSindex > 0 {
 		parts = append(parts, "secondary indexes on flash "+units.SI(d.FlashSindex))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// sprigsNote warns when partition-tree-sprigs goes beyond what the reference lets one set alone.
+func (d Detail) sprigsNote() string {
+	if d.SprigsPerPartition > SupportSprigsPerPart {
+		return fmt.Sprintf(" (above %s: ask Aerospike Support)", units.Count(SupportSprigsPerPart))
+	}
+	return ""
 }
 
 // ramParts lists what the memory demand is made of.

@@ -16,7 +16,10 @@
 
   var defaults = null;   // the form as the interface opens
   var providers = [];    // catalog
-  var pricesAsOf = "";
+  var pricesAsOf = "";   // date of the reference prices
+  var ratesAsOf = "";    // date of the default network rates
+  var livePrices = {};   // provider key → this server looks its prices up live
+  var tight = 0.85;      // load above which a resource is tight (sizing.TightLoad)
   var req = null;        // the form: workload, node, hypotheses, network
   var rows = [];         // configurations added by the user
   var auto = [];         // providers whose recommended configuration is listed
@@ -51,9 +54,16 @@
     return key === "storage" ? si(v) : key === "ram" ? iec(v) : key === "cpu" ? v.toFixed(1) + " vCPU" : count(v);
   }
 
+  function showFailure(err) {
+    $("failure").textContent = "The sizer service did not answer: " + err.message;
+    $("failure").hidden = false;
+  }
+
   // ---- Form ↔ request ----
 
   function fields() { return document.querySelectorAll("[data-path]"); }
+  function scaleOf(el) { return parseFloat(el.getAttribute("data-scale") || "1"); }
+  function shown(el, v) { return +(v * scaleOf(el)).toFixed(6); }
 
   function fillForm() {
     fields().forEach(function (el) {
@@ -63,25 +73,44 @@
       } else if (el.type === "checkbox") {
         el.checked = !!v;
       } else {
-        el.value = +(v * parseFloat(el.getAttribute("data-scale") || "1")).toFixed(6);
+        el.value = shown(el, v);
       }
     });
     refreshDependents();
   }
 
+  // markSeg lights the button of the value. A value the buttons do not offer (an RF or an AZ count
+  // prefilled from the URL) gets a button of its own, so that it stays visible and clickable.
   function markSeg(seg, v) {
-    seg.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-v") === v); });
+    var found = false;
+    seg.querySelectorAll("button").forEach(function (b) {
+      var on = b.getAttribute("data-v") === v;
+      if (b.classList.contains("extra") && !on) { b.remove(); return; }
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      found = found || on;
+    });
+    if (found) return;
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "extra on";
+    b.setAttribute("data-v", v);
+    b.setAttribute("aria-pressed", "true");
+    b.textContent = (seg.getAttribute("data-label") || "{v}").replace("{v}", v);
+    seg.appendChild(b);
   }
 
   // netFlags tells which options apply: a network option shows unchecked and disabled while its
-  // prerequisite is off, and the choice comes back with it; workload fields follow the engine and
-  // the indexes.
+  // prerequisite is off, and the choice comes back with it; Active Rack's own inputs show only
+  // when it engages (a full copy per rack: AZs ≤ RF); workload fields follow the engine and the
+  // indexes.
   function netFlags() {
     var n = req.network, w = req.workload, rack = n.azs > 1 && n.rack_aware, active = rack && n.active_rack;
+    var engaged = active && n.azs <= w.rf;
     return {
       az: n.mode === "az", region: n.mode === "region", rack: rack, active: active, local: rack && n.local_read,
-      activeRack: active, coLocated: active && n.client_placement === "single", compression: n.xdr_compression,
-      memory: w.engine === "memory", sindex: w.sindex_entries > 0
+      activeRack: engaged, coLocated: engaged && n.client_placement === "single", compression: n.xdr_compression,
+      memory: w.engine === "memory", device: w.engine === "device", sindex: w.sindex_entries > 0
     };
   }
 
@@ -97,8 +126,20 @@
     setCheck("network.active_rack", f.active, !f.rack);
     setCheck("network.local_read", f.local, !f.rack);
     document.querySelectorAll("[data-when]").forEach(function (el) { el.hidden = !f[el.getAttribute("data-when")]; });
-    $("rateUnit").textContent = f.az ? "$/GB cross-AZ" : "$/GB cross-region";
+    bindRates(f.az ? "rates" : "region_rates");
     $("whatif").hidden = sameHypotheses();
+  }
+
+  // bindRates points the rate inputs at the rates of the current mode: between AZs, or between
+  // regions for XDR.
+  function bindRates(map) {
+    $("rateUnit").textContent = map === "rates" ? "$/GB cross-AZ" : "$/GB cross-region";
+    document.querySelectorAll("#netTable input").forEach(function (el) {
+      var path = "network." + map + "." + el.getAttribute("data-provider");
+      if (el.getAttribute("data-path") === path) return;
+      el.setAttribute("data-path", path);
+      el.value = shown(el, getPath(req, path));
+    });
   }
 
   function sameHypotheses() {
@@ -108,20 +149,33 @@
     });
   }
 
+  // The form's bounds apply as the server's would: an out-of-range value is clamped when stored.
+  function clampTo(el, v) {
+    if (el.min !== "" && v < +el.min) v = +el.min;
+    if (el.max !== "" && v > +el.max) v = +el.max;
+    return v;
+  }
+
   document.addEventListener("input", function (e) {
     var el = e.target, path = el.getAttribute && el.getAttribute("data-path");
     if (!path || el.type === "checkbox") return;
     var v = parseFloat(el.value);
     if (isNaN(v)) return; // keep the last valid value while the field is being edited
-    setPath(req, path, v / parseFloat(el.getAttribute("data-scale") || "1"));
+    setPath(req, path, clampTo(el, v) / scaleOf(el));
     changed();
   });
 
+  // Once a field is left, it shows the value in use: the clamped one, or the kept one when the
+  // field was emptied.
   document.addEventListener("change", function (e) {
     var el = e.target, path = el.getAttribute && el.getAttribute("data-path");
-    if (!path || el.type !== "checkbox") return;
-    setPath(req, path, el.checked);
-    changed();
+    if (!path) return;
+    if (el.type === "checkbox") {
+      setPath(req, path, el.checked);
+      changed();
+      return;
+    }
+    el.value = shown(el, getPath(req, path));
   });
 
   document.addEventListener("click", function (e) {
@@ -170,8 +224,7 @@
       }
     }).catch(function (err) {
       if (id !== seq) return;
-      $("failure").textContent = "The sizer service did not answer: " + err.message;
-      $("failure").hidden = false;
+      showFailure(err);
     });
   }
 
@@ -187,7 +240,7 @@
   }
 
   function gauge(util, ceiling, load) {
-    var cls = load > 1 ? "crit" : load > 0.85 ? "warn" : "";
+    var cls = load > 1 ? "crit" : load > tight ? "warn" : "";
     return '<div class="gauge ' + cls + '"><div style="width:' + Math.min(100, util * 100).toFixed(1) + '%"></div>' +
       '<span style="left:' + (ceiling * 100).toFixed(1) + '%" title="Ceiling ' + pct(ceiling) + '"></span></div>';
   }
@@ -212,6 +265,7 @@
     b.className = "badge " + (g.nodes ? "sev-info" : "sev-critical");
     b.textContent = g.nodes ? BINDINGS[g.binding] : "No fit";
     $("explain").textContent = g.explain;
+    $("checks").innerHTML = g.checks.map(function (c) { return '<div class="notice warn small">' + esc(c) + "</div>"; }).join("");
     var titles = {
       storage: "Storage to place", ram: w.index_on === "flash" ? "Memory (index on flash)" : "Memory",
       cpu: "CPU: " + count(d.tps) + " tx/s at the horizon", iops: "Device IOPS"
@@ -222,12 +276,15 @@
         var why = res.key === "storage" && w.engine === "memory" ? "Nothing on device in memory mode" : res.key === "iops" ? "No device operation" : "No demand";
         return '<div class="kpi"><div class="l">' + titles[res.key] + '</div><div class="v">—</div><div class="n">' + why + "</div></div>";
       }
-      var util = g.utilization[res.key] || 0, load = g.load[res.key] || 0, parts = partsText(res.key, d);
-      if (res.key === "storage" && d.flash_index > 0) parts += " · partition-tree-sprigs " + d.sprigs_per_partition;
-      if (res.key === "iops" && d.blocks_per_read > 1) parts += (parts ? " · " : "") + d.blocks_per_read + " blocks of 4 KiB per read";
+      var util = g.utilization[res.key] || 0, load = g.load[res.key] || 0, need = g.need[res.key];
+      var parts = [partsText(res.key, d)];
+      if (res.key === "storage" && d.flash_index > 0) parts.push("partition-tree-sprigs " + d.sprigs_per_partition);
+      if (res.key === "iops" && d.blocks_per_read > 1) parts.push(d.blocks_per_read + " blocks of 4 KiB per read");
+      parts = parts.filter(Boolean).join(" · ");
+      var needed = need === undefined ? "no node count works" : need + " node" + (need === 1 ? "" : "s") + " needed";
       return '<div class="kpi"><div class="l">' + titles[res.key] + '</div><div class="v">' + amount(res.key, demand) + "</div>" +
         (parts ? '<div class="n">' + parts + "</div>" : "") +
-        '<div class="n">' + g.need[res.key] + " nodes needed · " + amount(res.key, g.usable[res.key]) + " usable per node</div>" +
+        '<div class="n">' + needed + " · " + amount(res.key, g.usable[res.key]) + " usable per node</div>" +
         (g.nodes ? gauge(util, ceiling, load) + '<div class="n">' + pct(util) + " used at peak · ceiling " + pct(ceiling) + "</div>" : "") +
         "</div>";
     }).join("");
@@ -235,7 +292,7 @@
   }
 
   function renderPlacement(r) {
-    var n = r.generic.nodes, s = r.settings, groups = [], letters = "abcdef";
+    var n = r.generic.nodes, s = r.settings, groups = [];
     if (!n) {
       $("racks").innerHTML = '<div class="muted small">No node count works with this generic node.</div>';
       return;
@@ -245,8 +302,8 @@
     } else {
       var first = 1;
       for (var i = 0; i < s.azs; i++) {
-        var size = Math.floor(n / s.azs) + (i < n % s.azs ? 1 : 0);
-        var title = s.rack_aware ? "Rack " + (i + 1) + " · AZ " + letters[i] : s.azs > 1 ? "AZ " + letters[i] + " · no rack ID" : "AZ a";
+        var size = Math.floor(n / s.azs) + (i < n % s.azs ? 1 : 0), az = String.fromCharCode(97 + i); // a…l for the 12 AZs the server accepts
+        var title = s.rack_aware ? "Rack " + (i + 1) + " · AZ " + az : s.azs > 1 ? "AZ " + az + " · no rack ID" : "AZ a";
         groups.push({ title: title, nodes: size, first: first });
         first += size;
       }
@@ -264,9 +321,9 @@
 
   function buildNetTable() {
     $("netTable").querySelector("tbody").innerHTML = providers.map(function (p) {
-      return '<tr data-provider="' + p.key + '"><td><span class="dot" style="background:' + p.color + '"></span> ' + esc(p.label) + "</td>" +
+      return '<tr data-provider="' + esc(p.key) + '"><td><span class="dot" style="background:' + esc(p.color) + '"></span> ' + esc(p.label) + "</td>" +
         '<td class="num" data-cell="gb"></td>' +
-        '<td class="num"><input type="number" data-path="network.rates.' + p.key + '" min="0" step="0.001"></td>' +
+        '<td class="num"><input type="number" data-provider="' + esc(p.key) + '" data-path="network.rates.' + esc(p.key) + '" min="0" step="0.001" aria-label="' + esc(p.label) + ' rate, $ per GB"></td>' +
         '<td class="num" data-cell="cost"></td></tr>';
     }).join("");
   }
@@ -301,7 +358,7 @@
       var list = r.rows.filter(function (row) { return row.provider === p.key; });
       if (!list.length) return;
       var low = cheapest(list);
-      html += '<tr class="group"><td colspan="7"><span class="dot" style="background:' + p.color + '"></span><strong>' + esc(p.label) + "</strong> " +
+      html += '<tr class="group"><td colspan="7"><span class="dot" style="background:' + esc(p.color) + '"></span><strong>' + esc(p.label) + "</strong> " +
         '<span class="muted small">' + list.length + " configuration" + (list.length > 1 ? "s" : "") +
         (low ? " · from " + usd(low.cost.total) + "/month" : "") + "</span></td></tr>";
       list.forEach(function (row) {
@@ -317,14 +374,14 @@
     var badge = row.price.source === "live"
       ? '<span class="nature live" title="Public on-demand price in ' + esc(row.region.id) + '">live</span>'
       : '<span class="nature" title="Reference on-demand list price in US East, read on ' + esc(pricesAsOf) + '">reference</span>';
-    if (p.live_prices) badge += ' <button class="btn icon" type="button" data-refresh="' + esc(row.id) + '" title="Look the price up again">↻</button>';
+    if (livePrices[p.key]) badge += ' <button class="btn icon" type="button" data-refresh="' + esc(row.id) + '" title="Look the price up again">↻</button>';
     return badge;
   }
 
   function rowHTML(row, p, alt, best) {
     var i = row.instance, h = last.hypotheses, isBest = best && best.id === row.id;
     var tags = (row.auto ? ' <span class="badge sev-info" title="Cheapest configuration of this provider for the workload; follows the form">recommended</span>' : "") +
-      (alt ? ' <span class="badge sev-info" title="Smallest instance type that fits comfortably with as many nodes">comfortable alternative</span>' : "") +
+      (alt ? ' <span class="badge sev-info" title="Cheapest instance type that fits comfortably with as many nodes">comfortable alternative</span>' : "") +
       (isBest ? ' <span class="badge sev-ok" title="Lowest monthly cost among the configurations that fit comfortably">lowest cost</span>' : "");
     var usage = RESOURCES.map(function (res) {
       var u = row.fit.utilization[res.key];
@@ -395,11 +452,15 @@
     var row = findRow(id);
     if (!row) return;
     post("/api/refresh", { provider: row.provider, region: row.region.id, instance: row.instance.name })
-      .then(function () { polls = 0; schedule(0); });
+      .then(function () { polls = 0; schedule(0); })
+      .catch(showFailure);
   }
 
+  // A Nodes field leaves focus when its value is taken, so that the table shows the new answer.
   $("rows").addEventListener("change", function (e) {
-    if (e.target.classList.contains("qty")) setNodes(e.target.getAttribute("data-row"), e.target.value);
+    if (!e.target.classList.contains("qty")) return;
+    e.target.blur();
+    setNodes(e.target.getAttribute("data-row"), e.target.value);
   });
   $("rows").addEventListener("click", function (e) {
     var b = e.target.closest("button");
@@ -459,6 +520,8 @@
       if (typeof cur === "number") {
         var v = parseFloat(value);
         if (isNaN(v)) return;
+        var seg = document.querySelector('.seg[data-path="' + key + '"]');
+        if (seg && seg.getAttribute("data-type") === "int") v = Math.round(v); // the API wants whole counts
         setPath(req, key, v);
       } else if (typeof cur === "boolean") {
         setPath(req, key, value === "1" || value === "true");
@@ -479,6 +542,14 @@
     note.hidden = false;
   }
 
+  // pricesNote says which prices this server reads live, and what applies otherwise.
+  function pricesNote() {
+    var live = providers.filter(function (p) { return livePrices[p.key]; }).map(function (p) { return p.label; });
+    var reference = "the reference on-demand list price in US East read on " + pricesAsOf;
+    if (!live.length) return "Prices: " + reference + " applies to every configuration (live lookups are off on this server).";
+    return "Prices: " + live.join(" and ") + " are read live for the chosen region (ec2.shop, Azure Retail Prices API); otherwise, and for the other providers, " + reference + " applies.";
+  }
+
   // ---- Start ----
 
   fetch("/api/defaults").then(function (r) { return r.json(); }).then(function (d) {
@@ -486,19 +557,19 @@
     delete defaults.rows;
     providers = d.providers;
     pricesAsOf = d.prices_as_of;
+    ratesAsOf = d.rates_as_of || "";
+    livePrices = d.live_prices || {};
+    tight = (d.thresholds && d.thresholds.tight) || tight;
     req = clone(defaults);
     delete req.auto;
     auto = defaults.auto.slice();
-    $("pricesNote").textContent = "Prices: AWS and Azure are read live for the chosen region (ec2.shop, Azure Retail Prices API); " +
-      "otherwise, and always for Google Cloud, the reference list price in US East read on " + pricesAsOf + " applies.";
+    $("pricesNote").textContent = pricesNote();
+    document.querySelectorAll(".ratesAsOf").forEach(function (el) { el.textContent = ratesAsOf; });
     $("addProvider").innerHTML = options(providers, function (p) { return p.key; }, function (p) { return p.label; });
     fillAddForm();
     buildNetTable();
     applyQuery();
     fillForm();
     send();
-  }).catch(function (err) {
-    $("failure").textContent = "The sizer service did not answer: " + err.message;
-    $("failure").hidden = false;
-  });
+  }).catch(showFailure);
 })();

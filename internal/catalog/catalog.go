@@ -9,14 +9,21 @@ import (
 // GiB is a gibibyte: memory is counted in binary units, as providers publish it.
 const GiB = 1 << 30
 
+// HoursPerMonth turns hourly prices into monthly ones, as the providers' calculators do; the
+// network traffic is counted over the same month.
+const HoursPerMonth = 730
+
 // Instance is a machine type with local NVMe suitable for Aerospike.
 type Instance struct {
-	Name      string  `json:"name"`
-	VCPU      int     `json:"vcpu"`
-	RAMGiB    float64 `json:"ram_gib"`
-	Drives    int     `json:"drives"`
-	DriveGB   float64 `json:"drive_gb"`   // decimal GB, as providers publish
-	IOPS      float64 `json:"iops"`       // sustained planning IOPS per node, 4 KiB random reads
+	Name    string  `json:"name"`
+	VCPU    int     `json:"vcpu"`
+	RAMGiB  float64 `json:"ram_gib"`
+	Drives  int     `json:"drives"`
+	DriveGB float64 `json:"drive_gb"` // decimal GB (a drive published in GiB is converted)
+	// IOPS is the planning figure per node, in 4 KiB blocks: the sustained numbers of the
+	// aerospike-wellness catalog for i4i, Z3 and Lsv3 (their measurement is not recorded) and, for
+	// C4A, half the published random-write IOPS (decision T13).
+	IOPS      float64 `json:"iops"`
 	PriceHour float64 `json:"price_hour"` // reference on-demand Linux price in PricesRegion
 }
 
@@ -32,14 +39,12 @@ type Region struct {
 	Label string `json:"label"`
 }
 
-// Provider is a cloud provider with its regions and instance types (smallest first).
+// Provider is a cloud provider with its regions and instance types (cheapest first).
 type Provider struct {
 	Key           string     `json:"key"`
 	Label         string     `json:"label"`
-	Tag           string     `json:"tag"`
 	Color         string     `json:"color"`
 	DefaultRegion string     `json:"default_region"`
-	LivePrices    bool       `json:"live_prices"` // a free public price source exists
 	Regions       []Region   `json:"regions"`
 	Instances     []Instance `json:"instances"`
 }
@@ -70,8 +75,8 @@ var catalogJSON []byte
 // Providers is the embedded catalog, in display order.
 var Providers = mustProviders()
 
-// PricesAsOf is the date the reference prices were read.
-const PricesAsOf = "2026-10-21"
+// PricesAsOf is the date the latest reference prices were read (decisions T6 and T13).
+const PricesAsOf = "2026-10-30"
 
 // PricesRegion is the region whose public prices the reference holds, per provider (US East).
 var PricesRegion = map[string]string{"aws": "us-east-1", "azure": "eastus", "gcp": "us-east1"}

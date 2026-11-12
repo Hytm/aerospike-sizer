@@ -1,3 +1,5 @@
+// Package service runs the server as two launchd instances that hand over to each other without
+// downtime, and provides the listener they share.
 package service
 
 import (
@@ -48,17 +50,21 @@ func (systemLaunchctl) Run(args ...string) (string, error) {
 
 // Manager installs and hands over the launchd instances.
 type Manager struct {
-	StateDir  string            // binaries per slot
-	AgentsDir string            // ~/Library/LaunchAgents
-	LogDir    string            // ~/Library/Logs/sizer
-	Addr      string            // listen address of the service
-	Env       map[string]string // extra environment for the service
-	Version   string
-	Launchctl Launchctl
-	HTTP      *http.Client
-	Out       io.Writer
-	Wait      time.Duration // how long to wait for the new instance
+	StateDir      string            // binaries per slot
+	AgentsDir     string            // ~/Library/LaunchAgents
+	LogDir        string            // ~/Library/Logs/sizer
+	Addr          string            // listen address of the service
+	Env           map[string]string // extra environment for the service
+	Version       string
+	Launchctl     Launchctl
+	HTTP          *http.Client
+	Out           io.Writer
+	Wait          time.Duration // how long to wait for the new instance
+	ProbeInterval time.Duration // between the health probes that tell whether an instance is in service
 }
+
+// probes is how many times /health is asked before concluding that nothing answers.
+const probes = 3
 
 // NewManager returns a manager for the current user.
 func NewManager(stateDir, addr, version string, env map[string]string) *Manager {
@@ -69,7 +75,7 @@ func NewManager(stateDir, addr, version string, env map[string]string) *Manager 
 		// A kept-alive connection would keep talking to the old instance: every check opens a new
 		// connection, which macOS hands to the newest listener.
 		HTTP: &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}},
-		Out:  os.Stdout, Wait: 30 * time.Second,
+		Out:  os.Stdout, Wait: 30 * time.Second, ProbeInterval: time.Second,
 	}
 }
 
@@ -95,16 +101,50 @@ func (m *Manager) Health() (*Health, error) {
 	return &h, nil
 }
 
+// probe asks /health a few times: a transient miss must not pass for a stopped service.
+func (m *Manager) probe() *Health {
+	for i := 1; ; i++ {
+		if h, err := m.Health(); err == nil {
+			return h
+		}
+		if i == probes {
+			return nil
+		}
+		time.Sleep(m.ProbeInterval)
+	}
+}
+
+// loaded lists the slots launchd runs, whether or not they answer.
+func (m *Manager) loaded() []string {
+	var out []string
+	for _, slot := range Slots {
+		if _, err := m.Launchctl.Run("print", m.domain()+"/"+Label(slot)); err == nil {
+			out = append(out, slot)
+		}
+	}
+	return out
+}
+
 // Deploy installs the binary at src in the free slot, starts it next to the running instance on the
 // same port, and retires the old instance once the new one answers /health. If the new instance
-// does not answer, it is removed and the old one stays in service.
+// does not answer, it is removed and the old one stays in service. When nothing answers, a slot
+// that launchd still runs is not overwritten: it would leave nothing to roll back to.
 func (m *Manager) Deploy(src string) error {
-	old, _ := m.Health()
+	old := m.probe()
 	active := ""
-	if old != nil {
+	switch {
+	case old != nil:
 		active = old.Slot
 		if active == "" {
 			return fmt.Errorf("a sizer server started by hand answers on %s (pid %d): stop it first", m.Addr, old.PID)
+		}
+	default:
+		if loaded := m.loaded(); len(loaded) > 0 {
+			return fmt.Errorf("slot %s is loaded but does not answer on %s (see %s): fix it, or run `sizer uninstall` first", strings.Join(loaded, " and "), m.Addr, m.LogDir)
+		}
+		// The plists an interrupted deploy may have left would start at the next login.
+		for _, slot := range Slots {
+			os.Remove(m.plistPath(slot))
 		}
 	}
 	free := "a"
@@ -117,25 +157,30 @@ func (m *Manager) Deploy(src string) error {
 	}
 	_, _ = m.Launchctl.Run("bootout", m.domain()+"/"+Label(free))
 	if out, err := m.Launchctl.Run("bootstrap", m.domain(), m.plistPath(free)); err != nil {
+		m.discard(free)
 		return fmt.Errorf("launchctl bootstrap: %v: %s", err, strings.TrimSpace(out))
 	}
 	h, err := m.waitFor(free, old)
 	if err != nil {
 		fmt.Fprintf(m.Out, "new instance not healthy (%v): rolling back, slot %s stays in service\n", err, orNone(active))
-		_, _ = m.Launchctl.Run("bootout", m.domain()+"/"+Label(free))
-		os.Remove(m.plistPath(free))
+		m.discard(free)
 		return err
 	}
 	fmt.Fprintf(m.Out, "slot %s answers (pid %d, %s)\n", free, h.PID, h.Version)
 	if active != "" {
 		// bootout sends SIGTERM: the old instance drains its requests and exits; removing its plist
 		// keeps launchd from starting it again at the next login.
-		_, _ = m.Launchctl.Run("bootout", m.domain()+"/"+Label(active))
-		os.Remove(m.plistPath(active))
+		m.discard(active)
 		fmt.Fprintf(m.Out, "slot %s retired\n", active)
 	}
 	fmt.Fprintf(m.Out, "service: http://%s\n", m.Addr)
 	return nil
+}
+
+// discard stops a slot and removes its plist, so that launchd never starts it again.
+func (m *Manager) discard(slot string) {
+	_, _ = m.Launchctl.Run("bootout", m.domain()+"/"+Label(slot))
+	os.Remove(m.plistPath(slot))
 }
 
 func orNone(s string) string {
@@ -249,12 +294,7 @@ func (m *Manager) Status() string {
 		if _, err := os.Stat(m.plistPath(slot)); err == nil {
 			state = "installed"
 			if out, err := m.Launchctl.Run("print", m.domain()+"/"+Label(slot)); err == nil {
-				state = "loaded"
-				for _, l := range strings.Split(out, "\n") {
-					if t := strings.TrimSpace(l); strings.HasPrefix(t, "pid = ") || strings.HasPrefix(t, "state = ") {
-						state += ", " + t
-					}
-				}
+				state = "loaded" + serviceState(out)
 			}
 		}
 		fmt.Fprintf(&b, "slot %s (%s): %s\n", slot, Label(slot), state)
@@ -263,10 +303,21 @@ func (m *Manager) Status() string {
 	return b.String()
 }
 
+// serviceState picks the state and pid of a launchctl print listing: its top-level keys sit
+// behind one tab, the nested coalition blocks (which carry a state of their own) behind two.
+func serviceState(out string) string {
+	var b strings.Builder
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "\tpid = ") || strings.HasPrefix(l, "\tstate = ") {
+			b.WriteString(", " + strings.TrimSpace(l))
+		}
+	}
+	return b.String()
+}
+
 // Uninstall stops both slots and removes their agents; the slot binaries are kept.
 func (m *Manager) Uninstall() {
 	for _, slot := range Slots {
-		_, _ = m.Launchctl.Run("bootout", m.domain()+"/"+Label(slot))
-		os.Remove(m.plistPath(slot))
+		m.discard(slot)
 	}
 }

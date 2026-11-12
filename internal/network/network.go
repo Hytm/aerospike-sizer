@@ -4,6 +4,7 @@ package network
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/Hytm/aerospike-sizer/internal/catalog"
@@ -28,8 +29,8 @@ const (
 
 // XDR topologies.
 const (
-	Mesh = "mesh" // active-active: every write ships to every other region
-	Hub  = "hub"  // hub and spoke: every write ships once
+	Mesh = "mesh" // active-active: every region ships its writes to every other region
+	Hub  = "hub"  // hub and spoke: the hub ships every write to each spoke
 )
 
 // Settings describe the deployment and the rates of the moved traffic.
@@ -45,30 +46,51 @@ type Settings struct {
 	XDRTopology     string  `json:"xdr_topology"`
 	XDRCompression  bool    `json:"xdr_compression"`
 	CompressionGain float64 `json:"compression_gain"` // share of the XDR volume compression saves
-	// Rates are the fully-loaded $ per GB moved, per provider (both directions when both are billed).
-	Rates map[string]float64 `json:"rates"`
+	// Rates are the $ per GB moved between the AZs of a region, per provider (both directions
+	// when both are billed); RegionRates the $ per GB shipped between regions by XDR (egress).
+	Rates       map[string]float64 `json:"rates"`
+	RegionRates map[string]float64 `json:"region_rates"`
 }
 
-// DefaultRates are the historical cross-AZ list prices: AWS and Azure bill both directions.
+// RatesAsOf is the date the default rates were read on the providers' pricing pages.
+const RatesAsOf = "2026-11-11"
+
+// DefaultRates are the list prices of traffic between the availability zones of a region: AWS
+// bills $0.01 per GB in each direction, Google Cloud $0.01 per GiB on egress only (entered per
+// GB), Azure nothing since May 2024.
 func DefaultRates() map[string]float64 {
-	return map[string]float64{"aws": 0.02, "gcp": 0.01, "azure": 0.02}
+	return map[string]float64{"aws": 0.02, "gcp": 0.01, "azure": 0}
+}
+
+// DefaultRegionRates are the list prices of traffic between two regions of the same continent,
+// billed on egress by every provider: $0.02 per GB (AWS, Azure) or per GiB (Google Cloud); other
+// region pairs cost more.
+func DefaultRegionRates() map[string]float64 {
+	return map[string]float64{"aws": 0.02, "gcp": 0.02, "azure": 0.02}
 }
 
 // DefaultSettings are three rack-aware AZs with Local read. Active Rack is off: it needs RF ≥ AZs.
 func DefaultSettings() Settings {
 	return Settings{
 		Mode: MultiAZ, AZs: 3, RackAware: true, LocalRead: true, ClientPlacement: Distributed,
-		ResidualRead: 0.03, Regions: 2, XDRTopology: Mesh, XDRCompression: true, CompressionGain: 0.5, Rates: DefaultRates(),
+		ResidualRead: 0.03, Regions: 2, XDRTopology: Mesh, XDRCompression: true, CompressionGain: 0.5,
+		Rates: DefaultRates(), RegionRates: DefaultRegionRates(),
 	}
 }
+
+// Bounds of the topology.
+const (
+	MaxAZs     = 12
+	MaxRegions = 8
+)
 
 // Normalize clamps the settings and drops the options their prerequisites rule out.
 func (s Settings) Normalize() Settings {
 	if s.Mode != MultiRegion {
 		s.Mode = MultiAZ
 	}
-	s.AZs = min(max(s.AZs, 1), 12)
-	s.Regions = min(max(s.Regions, 2), 8)
+	s.AZs = min(max(s.AZs, 1), MaxAZs)
+	s.Regions = min(max(s.Regions, 2), MaxRegions)
 	if s.ClientPlacement != Single {
 		s.ClientPlacement = Distributed
 	}
@@ -83,14 +105,20 @@ func (s Settings) Normalize() Settings {
 	if !s.RackAware {
 		s.ActiveRack, s.LocalRead = false, false
 	}
-	rates := DefaultRates()
-	for k, v := range s.Rates {
-		if _, ok := rates[k]; ok {
-			rates[k] = max(v, 0)
+	s.Rates = normalizeRates(s.Rates, DefaultRates())
+	s.RegionRates = normalizeRates(s.RegionRates, DefaultRegionRates())
+	return s
+}
+
+// normalizeRates keeps the given rates of the known providers, never negative, and the defaults
+// for the others.
+func normalizeRates(given, defaults map[string]float64) map[string]float64 {
+	for k, v := range given {
+		if _, ok := defaults[k]; ok {
+			defaults[k] = max(v, 0)
 		}
 	}
-	s.Rates = rates
-	return s
+	return defaults
 }
 
 // Layout returns how the nodes of one cluster spread over racks.
@@ -115,16 +143,18 @@ type Traffic struct {
 	Warnings    []string           `json:"warnings"`
 }
 
-// secondsPerMonth matches the 730 hours a month of compute prices.
-const secondsPerMonth = 730 * 3600
+// secondsPerMonth matches the hours a month compute is priced over.
+const secondsPerMonth = catalog.HoursPerMonth * 3600
 
 // Estimate computes the traffic of a workload over normalized settings. The workload is taken as
 // given: the plan passes it grown to the planning horizon (sizing.Workload.Grown), so the traffic
 // follows the growth hypothesis like the CPU and the IOPS do.
 func Estimate(s Settings, w sizing.Workload) Traffic {
 	var t Traffic
+	rates := s.Rates
 	if s.Mode == MultiRegion {
 		t = xdr(s, w)
+		rates = s.RegionRates
 	} else {
 		t = crossAZ(s, w)
 	}
@@ -135,7 +165,7 @@ func Estimate(s Settings, w sizing.Workload) Traffic {
 	t.MonthlyGB = total * secondsPerMonth / 1e9
 	t.Costs = map[string]float64{}
 	for _, p := range catalog.Providers {
-		t.Costs[p.Key] = t.MonthlyGB * s.Rates[p.Key]
+		t.Costs[p.Key] = t.MonthlyGB * rates[p.Key]
 	}
 	return t
 }
@@ -161,17 +191,18 @@ func crossAZ(s Settings, w sizing.Workload) Traffic {
 		return t
 	}
 
-	crossReplicas := min(w.RF, s.AZs) - 1 // rack-aware: one copy per rack, extra copies stay in racks that hold one
+	crossReplicas := min(w.RF, s.AZs) - 1 // rack-aware: one copy per rack
+	extra := max(w.RF-s.AZs, 0)           // copies beyond one per rack: placed on random nodes
 	activeRack := s.ActiveRack && s.AZs <= w.RF
 	coLocated := activeRack && s.ClientPlacement == Single // the clients' AZ is the active rack
 	toMaster := remote
 	if coLocated {
 		toMaster = 0
 	}
-	write = writes * (toMaster + float64(crossReplicas))
-	fmt.Fprintf(&note, "Rack-aware: each write ships its replica(s) to %d other rack(s)", crossReplicas)
-	if w.RF > s.AZs {
-		note.WriteString(" (copies beyond one per rack stay in a rack that already holds one)")
+	write = writes * (toMaster + float64(crossReplicas) + float64(extra)*remote)
+	fmt.Fprintf(&note, "Rack-aware: each write ships one replica to each of the %d other rack(s)", crossReplicas)
+	if extra > 0 {
+		fmt.Fprintf(&note, " and its %d extra cop%s to random nodes, in another AZ %s of the time", extra, plural(extra, "y", "ies"), share)
 	}
 	switch {
 	case coLocated:
@@ -198,31 +229,41 @@ func crossAZ(s Settings, w sizing.Workload) Traffic {
 	return t
 }
 
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 func warnings(s Settings, rf int) []string {
 	var out []string
 	switch {
 	case s.AZs == 1:
 		out = append(out, "Single-AZ topology: replicas protect against a node failure but not against an availability-zone outage.")
-	case s.RackAware && s.ActiveRack && s.AZs > rf:
+	case !s.RackAware && rf > 1:
+		// Hash placement puts every copy of a record in the master's AZ with probability (1/AZs)^(RF−1).
+		out = append(out, fmt.Sprintf("No rack-awareness over %d AZs: hash placement puts every copy of about one record in %s in the same AZ, which an AZ outage loses. Set one rack-id per AZ.", s.AZs, units.Count(math.Pow(float64(s.AZs), float64(rf-1)))))
+	case s.ActiveRack && s.AZs > rf:
 		out = append(out, fmt.Sprintf("Active Rack only engages when every rack holds a full copy (AZ count ≤ RF, Aerospike EE 7.2+): with %d AZs and RF%d the traffic is computed without it. Raise the RF to %d or use fewer AZs.", s.AZs, rf, s.AZs))
 	}
 	if s.AZs > 1 && rf > s.AZs {
-		out = append(out, fmt.Sprintf("RF%d over %d AZs: a rack holds two copies of some records, so an AZ outage loses more than one copy. Align the AZ count with the RF, or lower the RF.", rf, s.AZs))
+		out = append(out, fmt.Sprintf("RF%d over %d AZs: an AZ holds two copies of some records, so an AZ outage loses more than one copy. Align the AZ count with the RF, or lower the RF.", rf, s.AZs))
 	}
 	return out
 }
 
 func xdr(s Settings, w sizing.Workload) Traffic {
-	factor, how := float64(s.Regions-1), "(regions − 1) [active-active mesh: each write ships to every other region]"
+	how := "(regions − 1) [active-active mesh: every region ships its writes to every other region]"
 	if s.XDRTopology == Hub {
-		factor, how = 1, "1 [hub and spoke: each write ships once, between a spoke and the hub]"
+		how = "(regions − 1) [hub and spoke: the hub ships every write to each spoke, and forwards a spoke's writes to the other spokes]"
 	}
-	bytes := w.WritesPerSec * w.ObjectSize * factor
+	bytes := w.WritesPerSec * w.ObjectSize * float64(s.Regions-1)
 	note := "XDR volume = writes/s × size × " + how
 	if s.XDRCompression {
 		bytes *= 1 - s.CompressionGain
 		note += fmt.Sprintf(" × (1 − %s compression gain)", units.Pct(s.CompressionGain))
 	}
-	note += fmt.Sprintf(". Compute is counted for one cluster in each of the %d regions; cross-AZ replication inside each region is not included.", s.Regions)
+	note += fmt.Sprintf(". Compute is counted for one cluster in each of the %d regions, each sized for the reads/s and writes/s entered (every region receives every write; enter the reads one region serves if they differ); cross-AZ replication inside each region is not included.", s.Regions)
 	return Traffic{BytesPerSec: map[string]float64{"xdr": bytes}, Clusters: s.Regions, Note: note}
 }

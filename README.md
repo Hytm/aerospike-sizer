@@ -29,7 +29,8 @@ What it computes:
   All-flash sizing follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks,
   10 B of RAM per sprig); secondary indexes count 14 B per entry at 1.5 sparseness.
 - **Replication traffic** across AZs (rack-awareness, Active Rack, Local read, client placement) or
-  across regions with XDR, and its monthly cost per provider.
+  across regions with XDR, and its monthly cost per provider: cross-AZ rates (AWS both directions,
+  Google Cloud egress only, Azure free since 2024) or inter-region rates, editable.
 - **Cost comparison**: each provider's cheapest comfortable configuration, plus the ones you add, with
   live on-demand prices for AWS and Azure in the chosen region and reference prices otherwise.
 
@@ -37,5 +38,6 @@ The form can be prefilled from the URL, one parameter per field named as in the 
 (`/?workload.objects=4e9&workload.index_on=flash&hypotheses.growth=0.2`); Aerospike Wellness links here
 that way with the parameters of an analysed cluster.
 
-Every result is an estimate: the assumptions behind it are shown and editable in the interface.
+The API serves the loopback names and the configured listen address only. Every result is an estimate:
+the assumptions behind it are shown and editable in the interface.
 Verify prices and network rates against your provider's official calculator before any budget decision.

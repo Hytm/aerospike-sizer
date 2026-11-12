@@ -6,11 +6,11 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -18,8 +18,11 @@ import (
 
 	"github.com/Hytm/aerospike-sizer/internal/buildinfo"
 	"github.com/Hytm/aerospike-sizer/internal/catalog"
+	"github.com/Hytm/aerospike-sizer/internal/network"
 	"github.com/Hytm/aerospike-sizer/internal/plan"
 	"github.com/Hytm/aerospike-sizer/internal/pricing"
+	"github.com/Hytm/aerospike-sizer/internal/service"
+	"github.com/Hytm/aerospike-sizer/internal/sizing"
 )
 
 //go:embed static
@@ -49,6 +52,7 @@ type Server struct {
 	Log    *slog.Logger
 	Slot   string        // launchd instance (a or b), empty when run by hand
 	Prices *pricing.Book // a book without fetchers quotes reference prices only
+	Addr   string        // listen address: requests for its host are served, besides the loopback names
 }
 
 // Handler returns the HTTP routes.
@@ -61,7 +65,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/defaults", s.defaults)
 	mux.HandleFunc("POST /api/plan", s.plan)
 	mux.HandleFunc("POST /api/refresh", s.refresh)
-	return s.logRequests(mux)
+	return s.localHost(s.logRequests(mux))
 }
 
 func cacheStatic(h http.Handler) http.Handler {
@@ -69,6 +73,32 @@ func cacheStatic(h http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		h.ServeHTTP(w, r)
 	})
+}
+
+// localHost serves the loopback names and the configured host only: a page on another domain
+// whose DNS record is switched to 127.0.0.1 (DNS rebinding) would otherwise reach the API as if
+// it were same-origin.
+func (s *Server) localHost(h http.Handler) http.Handler {
+	allowed := map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
+	if host := hostOf(s.Addr); host != "" {
+		allowed[host] = true
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !allowed[hostOf(r.Host)] {
+			http.Error(w, "unexpected host", http.StatusMisdirectedRequest)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+// hostOf returns the host of host:port, lower-cased, without brackets.
+func hostOf(hostport string) string {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host = hostport
+	}
+	return strings.Trim(strings.ToLower(host), "[]")
 }
 
 func (s *Server) logRequests(h http.Handler) http.Handler {
@@ -95,8 +125,7 @@ func (r *statusRecorder) WriteHeader(code int) {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status":"ok","pid":%d,"version":%q,"slot":%q}`+"\n", os.Getpid(), buildinfo.Version, s.Slot)
+	s.writeJSON(w, service.Health{Status: "ok", PID: os.Getpid(), Version: buildinfo.Version, Slot: s.Slot})
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
@@ -107,13 +136,21 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// defaults gives the interface its catalog and the form as it opens.
+// defaults gives the interface its catalog, the form as it opens, and what this server looks up
+// live.
 func (s *Server) defaults(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{
+	live := map[string]bool{}
+	for _, p := range catalog.Providers {
+		live[p.Key] = s.Prices.Live(p.Key)
+	}
+	s.writeJSON(w, map[string]any{
 		"request":       plan.DefaultRequest(),
 		"providers":     catalog.Providers,
+		"live_prices":   live,
 		"prices_as_of":  catalog.PricesAsOf,
 		"prices_region": catalog.PricesRegion,
+		"rates_as_of":   network.RatesAsOf,
+		"thresholds":    map[string]float64{"tight": sizing.TightLoad},
 		"version":       buildinfo.Version,
 	})
 }
@@ -123,7 +160,7 @@ func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 	if !s.decode(w, r, &req) {
 		return
 	}
-	writeJSON(w, plan.Compute(req, s.Prices))
+	s.writeJSON(w, plan.Compute(req, s.Prices))
 }
 
 // refresh drops a cached price so that the next plan looks it up again.
@@ -157,8 +194,16 @@ func (s *Server) decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
+// writeJSON answers with a JSON document, or with a 500 when the value cannot be encoded: an
+// empty 200 would hide the failure from the interface and the log alike.
+func (s *Server) writeJSON(w http.ResponseWriter, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		s.Log.Error("encode response", "err", err)
+		http.Error(w, "cannot encode the response", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(v)
+	w.Write(append(b, '\n'))
 }

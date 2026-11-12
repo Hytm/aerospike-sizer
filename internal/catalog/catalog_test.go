@@ -1,6 +1,11 @@
 package catalog
 
-import "testing"
+import (
+	"math"
+	"strconv"
+	"strings"
+	"testing"
+)
 
 func TestEveryProviderIsComplete(t *testing.T) {
 	if len(Providers) != 3 {
@@ -19,7 +24,7 @@ func TestEveryProviderIsComplete(t *testing.T) {
 				t.Errorf("%s %s: incomplete %+v", p.Key, i.Name, i)
 			}
 			if i.PriceHour < last {
-				t.Errorf("%s %s: instances must go from the smallest to the largest", p.Key, i.Name)
+				t.Errorf("%s %s: instances must go from the cheapest to the dearest", p.Key, i.Name)
 			}
 			last = i.PriceHour
 		}
@@ -37,24 +42,56 @@ func TestUnits(t *testing.T) {
 	}
 }
 
-// TestGCPAxion checks the C4A types against the published shapes and us-east1 prices (decision T13).
-func TestGCPAxion(t *testing.T) {
+// Google publishes its local SSDs in GiB: Z3 Titanium SSDs are 3,000 GiB (decision T14), C4A
+// Titanium SSDs 375 GiB (T13); the catalog stores the decimal conversion.
+func TestGoogleDrivesAreConvertedFromGiB(t *testing.T) {
 	p, _ := Get("gcp")
-	for name, want := range map[string]Instance{
-		"c4a-highmem-16-lssd": {VCPU: 16, RAMGiB: 128, Drives: 4, PriceHour: 1.1896},
-		"c4a-highmem-32-lssd": {VCPU: 32, RAMGiB: 256, Drives: 6, PriceHour: 2.256},
-		"c4a-highmem-72-lssd": {VCPU: 72, RAMGiB: 576, Drives: 16, PriceHour: 5.23},
-	} {
-		i, ok := p.Instance(name)
-		if !ok {
-			t.Errorf("%s missing", name)
+	for _, i := range p.Instances {
+		want := 375.0
+		if strings.HasPrefix(i.Name, "z3-") {
+			want = 3000
+		}
+		if gib := i.DriveGB * 1e9 / GiB; math.Abs(gib-want) > 0.1 {
+			t.Errorf("%s: %v GiB per drive, want %v", i.Name, gib, want)
+		}
+	}
+}
+
+// TestGCPAxion checks every C4A type against the published shape ladder and the us-east1 price
+// decomposition of decision T13 (per vCPU, per GiB and per Titanium SSD); a Google price change
+// updates the three rates here and in T13 together.
+func TestGCPAxion(t *testing.T) {
+	const perVCPU, perGiB, perDisk = 0.03085, 0.0035125, 0.0616
+	disks := map[int]int{4: 1, 8: 2, 16: 4, 32: 6, 48: 10, 64: 14, 72: 16}
+	p, _ := Get("gcp")
+	seen := 0
+	for _, i := range p.Instances {
+		if !strings.HasPrefix(i.Name, "c4a-") {
 			continue
 		}
-		if i.VCPU != want.VCPU || i.RAMGiB != want.RAMGiB || i.Drives != want.Drives || i.PriceHour != want.PriceHour {
-			t.Errorf("%s: %+v, want %+v", name, i, want)
+		seen++
+		parts := strings.Split(i.Name, "-") // c4a-<family>-<vcpu>-lssd
+		if len(parts) != 4 || parts[3] != "lssd" {
+			t.Errorf("%s: unexpected name", i.Name)
+			continue
 		}
-		if gib := i.DriveGB * 1e9 / GiB; gib < 374.9 || gib > 375.1 {
-			t.Errorf("%s: %v GiB per Titanium SSD, want 375", name, gib)
+		vcpu, _ := strconv.Atoi(parts[2])
+		gibPerVCPU := 4.0
+		if parts[1] == "highmem" {
+			gibPerVCPU = 8
 		}
+		if i.VCPU != vcpu || i.RAMGiB != float64(vcpu)*gibPerVCPU || i.Drives != disks[vcpu] {
+			t.Errorf("%s: %+v, want %d vCPU, %v GiB, %d drives", i.Name, i, vcpu, float64(vcpu)*gibPerVCPU, disks[vcpu])
+		}
+		want := float64(vcpu)*perVCPU + i.RAMGiB*perGiB + float64(i.Drives)*perDisk
+		if math.Abs(i.PriceHour-want) > 0.0001 {
+			t.Errorf("%s: %v $/h, want %.4f", i.Name, i.PriceHour, want)
+		}
+		if i.IOPS != 37500*float64(i.Drives) {
+			t.Errorf("%s: %v IOPS, want 37,500 per drive", i.Name, i.IOPS)
+		}
+	}
+	if seen != 14 {
+		t.Errorf("%d C4A types, want 14 (7 sizes × 2 families)", seen)
 	}
 }

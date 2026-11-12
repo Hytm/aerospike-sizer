@@ -2,10 +2,8 @@
  {
   "key": "aws",
   "label": "AWS",
-  "tag": "AWS",
   "color": "#FF9900",
   "default_region": "eu-west-3",
-  "live_prices": true,
   "regions": [
    {
     "id": "us-east-1",
@@ -104,10 +102,8 @@
  {
   "key": "gcp",
   "label": "Google Cloud",
-  "tag": "GCP",
   "color": "#4285F4",
-  "default_region": "europe-west9",
-  "live_prices": false,
+  "default_region": "europe-west1",
   "regions": [
    {
     "id": "us-central1",
@@ -124,10 +120,6 @@
    {
     "id": "europe-west1",
     "label": "europe-west1 · Belgium"
-   },
-   {
-    "id": "europe-west9",
-    "label": "europe-west9 · Paris"
    },
    {
     "id": "europe-west3",
@@ -201,7 +193,7 @@
     "vcpu": 8,
     "ram_gib": 64,
     "drives": 1,
-    "drive_gb": 3000,
+    "drive_gb": 3221.23,
     "iops": 50000,
     "price_hour": 1.1519
    },
@@ -237,7 +229,7 @@
     "vcpu": 16,
     "ram_gib": 128,
     "drives": 2,
-    "drive_gb": 3000,
+    "drive_gb": 3221.23,
     "iops": 100000,
     "price_hour": 2.3039
    },
@@ -255,7 +247,7 @@
     "vcpu": 22,
     "ram_gib": 176,
     "drives": 3,
-    "drive_gb": 3000,
+    "drive_gb": 3221.23,
     "iops": 140000,
     "price_hour": 3.25
    },
@@ -291,7 +283,7 @@
     "vcpu": 32,
     "ram_gib": 256,
     "drives": 4,
-    "drive_gb": 3000,
+    "drive_gb": 3221.23,
     "iops": 200000,
     "price_hour": 4.6077
    },
@@ -318,7 +310,7 @@
     "vcpu": 44,
     "ram_gib": 352,
     "drives": 6,
-    "drive_gb": 3000,
+    "drive_gb": 3221.23,
     "iops": 275000,
     "price_hour": 6.5
    },
@@ -327,7 +319,7 @@
     "vcpu": 88,
     "ram_gib": 704,
     "drives": 12,
-    "drive_gb": 3000,
+    "drive_gb": 3221.23,
     "iops": 550000,
     "price_hour": 13.0
    }
@@ -336,10 +328,8 @@
  {
   "key": "azure",
   "label": "Microsoft Azure",
-  "tag": "AZURE",
   "color": "#0078D4",
   "default_region": "francecentral",
-  "live_prices": true,
   "regions": [
    {
     "id": "eastus",

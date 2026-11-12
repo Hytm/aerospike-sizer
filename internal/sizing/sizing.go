@@ -108,7 +108,7 @@ type Hypotheses struct {
 	WriteOverhead  float64 `json:"write_overhead"`  // write-block overhead: device space on top of the stored records (0.1 = +10 %)
 	Compression    float64 `json:"compression"`     // stored size of records as a share of their size (1: no compression), on device and in memory
 	DefragMult     float64 `json:"defrag_mult"`     // device writes amplification from defragmentation
-	CacheHit       float64 `json:"cache_hit"`       // share of reads served without a device read
+	CacheHit       float64 `json:"cache_hit"`       // share of reads a cache serves (post-write cache, read-page-cache): the cache_read_pct of a live cluster, 0 unless measured
 	StorageFill    float64 `json:"storage_fill"`    // highest device usage per node
 	RAMFill        float64 `json:"ram_fill"`        // highest share of the RAM left after the OS reserve
 	OSReserveGiB   float64 `json:"os_reserve_gib"`  // memory kept for the OS and the process, at least
@@ -158,12 +158,12 @@ const (
 
 // DefaultHypotheses follow the capacity planning guide: 64 B of primary index per copy, device usage
 // planned at 50 % (the default defrag-lwm-pct) with no write overhead on top, 10 % of RAM for the OS,
-// sprigs half full with 10 B of RAM each, secondary index entries of 14 B at 1.5 sparseness. The ceilings
-// (storage 50 %, RAM 70 %, CPU 60 % of 15,000 transactions per vCPU, IO 100 %), the spare node and the
-// 70 % of reads served by the cache are aerospike-wellness's defaults too.
+// sprigs half full with 10 B of RAM each, secondary index entries of 14 B at 1.5 sparseness, no read served
+// by a cache (Aerospike has no read cache by default). The ceilings (storage 50 %, RAM 70 %, CPU 60 % of
+// 15,000 transactions per vCPU, IO 100 %) and the spare node are aerospike-wellness's defaults too.
 func DefaultHypotheses() Hypotheses {
 	return Hypotheses{
-		Growth: 0.3, IndexBytes: 64, RecordOverhead: 0, WriteOverhead: 0, Compression: 1, DefragMult: 1.3, CacheHit: 0.7,
+		Growth: 0.3, IndexBytes: 64, RecordOverhead: 0, WriteOverhead: 0, Compression: 1, DefragMult: 1.3, CacheHit: 0,
 		StorageFill: 0.5, RAMFill: 0.7, OSReserveGiB: 5, OSReservePct: 0.1, IOTarget: 1, OpsPerVCPU: 15000, CPUTarget: 0.6,
 		Loss: NodeLoss, SprigFill: 0.5, SprigRAMBytes: 10, SindexEntryBytes: 14, SindexSparseness: 1.5,
 	}
@@ -265,6 +265,20 @@ func (h Hypotheses) Usable(node Amounts) Amounts {
 	return Amounts{Storage: c.Storage * h.StorageFill, RAM: c.RAM * h.RAMFill, CPU: c.CPU * h.CPUTarget, IOPS: c.IOPS * h.IOTarget}
 }
 
+// ForDemand returns the hypotheses with the RAM ceiling the demand calls for. The indexes obey
+// RAMFill; the records of a memory namespace obey StorageFill, since 7.0+ keeps them in
+// pre-allocated write blocks that are defragmented and stop-written like a device's. The ceiling
+// of the whole is their weighted harmonic mean, so that the nodes needed are index ÷ (RAM ×
+// RAMFill) + records ÷ (RAM × StorageFill).
+func (h Hypotheses) ForDemand(d Detail) Hypotheses {
+	if d.DataRAM <= 0 || d.RAM <= 0 {
+		return h
+	}
+	share := d.DataRAM / d.RAM
+	h.RAMFill = 1 / ((1-share)/h.RAMFill + share/h.StorageFill)
+	return h
+}
+
 // Detail is the demand with what makes it up, every copy, overheads and growth included (growth
 // applies to the records and to the throughput alike).
 type Detail struct {
@@ -299,8 +313,9 @@ func Detailed(w Workload, h Hypotheses) Detail {
 	stored := (w.ObjectSize + h.RecordOverhead) * h.Compression // one record copy, as stored
 	var d Detail
 	if w.Engine == Memory {
-		// Records are compressed in memory too (storage-engine memory, 7.0+).
-		d.DataRAM = record * h.Compression
+		// Records in memory fill pre-allocated write blocks like a device's, compressed alike
+		// (storage-engine memory, 7.0+); ForDemand plans them at the storage fill.
+		d.DataRAM = record * (1 + h.WriteOverhead) * h.Compression
 	}
 	if w.OnDevice() {
 		d.Data = onDevice

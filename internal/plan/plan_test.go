@@ -36,9 +36,9 @@ func TestDefaultRequest(t *testing.T) {
 	if resp.Generic.Nodes != 6 || resp.Generic.Binding != sizing.ByCPU || resp.Generic.Explain == "" || len(resp.Generic.Checks) != 0 {
 		t.Errorf("generic = %+v", resp.Generic)
 	}
-	// The figures decisions T11 and T12 quote: 111,800 IOPS (33,800 of writes) and 466,452 GB a month.
+	// The figures decisions T12 and T15 quote: 293,800 IOPS (33,800 of writes, no read cache) and 466,452 GB a month.
 	d := resp.Generic.Demand
-	if !near(d.IOPS, 111800, 1) || !near(d.WriteIOPS, 33800, 1) || !near(resp.Network.MonthlyGB, 466452.48, 0.01) {
+	if !near(d.IOPS, 293800, 1) || !near(d.WriteIOPS, 33800, 1) || !near(resp.Network.MonthlyGB, 466452.48, 0.01) {
 		t.Errorf("IOPS %v (writes %v), %v GB/month", d.IOPS, d.WriteIOPS, resp.Network.MonthlyGB)
 	}
 	// Storage, RAM and IOPS fit on one node: with the spare, two.
@@ -229,5 +229,26 @@ func TestNodeAmountsAreBounded(t *testing.T) {
 	a := Node{VCPU: -1, RAMGiB: 1e30, StorageTB: 1e30, IOPS: 1e30}.Amounts()
 	if a.CPU != 0 || a.RAM != MaxNodeRAMGiB*catalog.GiB || a.Storage != MaxNodeStorageTB*1e12 || a.IOPS != MaxNodeIOPS {
 		t.Errorf("amounts = %+v", a)
+	}
+}
+
+// A memory namespace is sized with the RAM ceiling its records call for: between the storage fill
+// (records) and the RAM fill (indexes), and the answer says so.
+func TestMemoryNamespaceIsPlannedAtTheStorageFill(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = nil
+	req.Workload.Engine = sizing.Memory
+	resp := Compute(req, referenceQuoter{})
+	d := resp.Generic.Demand
+	share := d.DataRAM / d.RAM
+	if want := 1 / ((1-share)/0.7 + share/0.5); !near(resp.Hypotheses.RAMFill, want, 1e-9) || resp.Hypotheses.RAMFill >= 0.7 || resp.Hypotheses.RAMFill <= 0.5 {
+		t.Errorf("RAM fill = %v, want %v", resp.Hypotheses.RAMFill, want)
+	}
+	if !near(resp.Generic.Usable.RAM, resp.Hypotheses.RAMFill*(128-12.8)*catalog.GiB, 1) {
+		t.Errorf("usable RAM = %v", resp.Generic.Usable.RAM)
+	}
+	req.Workload.Engine = sizing.Device
+	if resp := Compute(req, referenceQuoter{}); resp.Hypotheses.RAMFill != 0.7 {
+		t.Errorf("device engine: RAM fill = %v", resp.Hypotheses.RAMFill)
 	}
 }

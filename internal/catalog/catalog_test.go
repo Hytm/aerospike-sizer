@@ -43,16 +43,20 @@ func TestUnits(t *testing.T) {
 }
 
 // Google publishes its local SSDs in GiB: Z3 Titanium SSDs are 3,000 GiB (decision T14), C4A
-// Titanium SSDs 375 GiB (T13); the catalog stores the decimal conversion.
+// Titanium SSDs 375 GiB (T13); the catalog stores the decimal conversion. Their planning IOPS are
+// half the published random-write IOPS: 250,000 per Z3 drive (T15), 37,500 per C4A drive (T13).
 func TestGoogleDrivesAreConvertedFromGiB(t *testing.T) {
 	p, _ := Get("gcp")
 	for _, i := range p.Instances {
-		want := 375.0
+		gib, iops := 375.0, 37500.0
 		if strings.HasPrefix(i.Name, "z3-") {
-			want = 3000
+			gib, iops = 3000, 250000
 		}
-		if gib := i.DriveGB * 1e9 / GiB; math.Abs(gib-want) > 0.1 {
-			t.Errorf("%s: %v GiB per drive, want %v", i.Name, gib, want)
+		if got := i.DriveGB * 1e9 / GiB; math.Abs(got-gib) > 0.1 {
+			t.Errorf("%s: %v GiB per drive, want %v", i.Name, got, gib)
+		}
+		if i.IOPS != iops*float64(i.Drives) {
+			t.Errorf("%s: %v IOPS, want %v per drive", i.Name, i.IOPS, iops)
 		}
 	}
 }

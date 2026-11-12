@@ -21,8 +21,8 @@ type Instance struct {
 	Drives  int     `json:"drives"`
 	DriveGB float64 `json:"drive_gb"` // decimal GB (a drive published in GiB is converted)
 	// IOPS is the planning figure per node, in 4 KiB blocks: the sustained numbers of the
-	// aerospike-wellness catalog for i4i, Z3 and Lsv3 (their measurement is not recorded) and, for
-	// C4A, half the published random-write IOPS (decision T13).
+	// aerospike-wellness catalog for i4i and Lsv3 (their measurement is not recorded) and, for the
+	// Google drives, half the published random-write IOPS (decision T13; T15 for Z3).
 	IOPS      float64 `json:"iops"`
 	PriceHour float64 `json:"price_hour"` // reference on-demand Linux price in PricesRegion
 }

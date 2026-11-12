@@ -21,7 +21,7 @@ type Source string
 const (
 	Live      Source = "live"      // read from the provider's prices for the region
 	Reference Source = "reference" // catalog price (US East), when no live price is available
-	Pending   Source = "pending"   // reference price while the live lookup runs
+	Pending   Source = "pending"   // reference price while a live lookup runs and no live price is known
 )
 
 // Quote is the hourly on-demand price of one node.
@@ -54,8 +54,8 @@ type key struct{ provider, region, instance string }
 type entry struct {
 	price   float64
 	ok      bool      // price is a live one
-	at      time.Time // of the last lookup, zero while the first one runs
-	loading bool
+	at      time.Time // of the last completed lookup
+	loading bool      // a lookup runs
 }
 
 // NewBook returns a book reading AWS prices from ec2.shop and Azure prices from the Azure Retail
@@ -71,6 +71,9 @@ func NewBook(log *slog.Logger) *Book {
 	}
 }
 
+// Live tells whether the provider's prices are looked up live.
+func (b *Book) Live(provider string) bool { return b.Fetchers[provider] != nil }
+
 func (b *Book) now() time.Time {
 	if b.Now != nil {
 		return b.Now()
@@ -79,7 +82,8 @@ func (b *Book) now() time.Time {
 }
 
 // Quote returns the price of one node, starting a live lookup when none is cached or the cached
-// one is stale; the first lookup of a price answers Pending with the reference price.
+// one is stale. While a lookup runs, a known live price is quoted (stale but live); otherwise the
+// quote is Pending with the reference price, so that the interface asks again.
 func (b *Book) Quote(provider, region string, inst catalog.Instance) Quote {
 	ref := Quote{Hourly: inst.PriceHour, Source: Reference}
 	f := b.Fetchers[provider]
@@ -93,25 +97,29 @@ func (b *Book) Quote(provider, region string, inst catalog.Instance) Quote {
 		b.entries = map[key]*entry{}
 	}
 	e := b.entries[k]
-	if e == nil {
+	switch {
+	case e == nil:
 		e = &entry{}
 		b.entries[k] = e
 		b.start(k, e, f)
-	}
-	if e.at.IsZero() {
-		return Quote{Hourly: inst.PriceHour, Source: Pending}
-	}
-	keep := b.RetryAfter
-	if e.ok {
-		keep = b.TTL
-	}
-	if !e.loading && b.now().Sub(e.at) > keep {
+	case !e.loading && b.now().Sub(e.at) > b.keep(e):
 		b.start(k, e, f)
 	}
-	if e.ok {
+	switch {
+	case e.ok:
 		return Quote{Hourly: e.price, Source: Live}
+	case e.loading:
+		return Quote{Hourly: inst.PriceHour, Source: Pending}
 	}
 	return ref
+}
+
+// keep is how long the last lookup's outcome stands.
+func (b *Book) keep(e *entry) time.Duration {
+	if e.ok {
+		return b.TTL
+	}
+	return b.RetryAfter
 }
 
 // start looks the price up in the background; b.mu is held.

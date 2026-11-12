@@ -25,7 +25,7 @@
     <div class="actions"><button class="btn" type="button" id="reset" title="Back to the default workload, hypotheses and configurations">Reset</button></div>
   </div>
   <div class="notice info">Every figure below is an <strong>estimate</strong> resting on the hypotheses shown; verify prices and network rates against the provider's calculator before any budget decision. <span id="pricesNote"></span></div>
-  <div class="notice err" id="failure" hidden></div>
+  <div class="notice err" id="failure" role="alert" hidden></div>
   <div class="notice info" id="prefilled" hidden></div>
 
   <div class="layout">
@@ -40,18 +40,19 @@
             <label class="f">Writes/s<input type="number" data-path="workload.writes_per_sec" min="0" step="1000"></label>
           </div>
           <div class="f">Replication factor
-            <div class="seg" data-path="workload.rf" data-type="int"><button type="button" data-v="1">RF1</button><button type="button" data-v="2">RF2</button><button type="button" data-v="3">RF3</button></div>
+            <div class="seg" role="group" aria-label="Replication factor" data-path="workload.rf" data-type="int" data-label="RF{v}"><button type="button" data-v="1">RF1</button><button type="button" data-v="2">RF2</button><button type="button" data-v="3">RF3</button></div>
           </div>
           <div class="f">Storage engine
-            <div class="seg" data-path="workload.engine"><button type="button" data-v="device">Device (NVMe)</button><button type="button" data-v="memory">Memory</button></div>
+            <div class="seg" role="group" aria-label="Storage engine" data-path="workload.engine"><button type="button" data-v="device">Device (NVMe)</button><button type="button" data-v="memory">Memory</button></div>
           </div>
           <label class="check" data-when="memory"><input type="checkbox" data-path="workload.persist"> <span>Persisted on a device <span class="muted small">records also written to NVMe</span></span></label>
-          <div class="f">Primary index
-            <div class="seg" data-path="workload.index_on"><button type="button" data-v="ram">In RAM</button><button type="button" data-v="flash">On flash (all-flash)</button></div>
+          <div class="f" data-when="device">Primary index
+            <div class="seg" role="group" aria-label="Primary index" data-path="workload.index_on"><button type="button" data-v="ram">In RAM</button><button type="button" data-v="flash">On flash (all-flash)</button></div>
           </div>
+          <p class="small muted" data-when="memory">An in-memory namespace keeps its primary index in memory (64 B per copy).</p>
           <label class="f">Secondary index entries <span class="unit">per record, all indexes</span><input type="number" data-path="workload.sindex_entries" min="0" step="1"></label>
           <div class="f" data-when="sindex">Secondary indexes
-            <div class="seg" data-path="workload.sindex_on"><button type="button" data-v="ram">In RAM</button><button type="button" data-v="flash">On flash</button></div>
+            <div class="seg" role="group" aria-label="Secondary indexes" data-path="workload.sindex_on"><button type="button" data-v="ram">In RAM</button><button type="button" data-v="flash">On flash</button></div>
           </div>
           <label class="check"><input type="checkbox" data-path="workload.set_index"> <span>Set indexes <span class="muted small">16 B per record copy</span></span></label>
         </div>
@@ -65,7 +66,7 @@
             <label class="f">vCPU<input type="number" data-path="node.vcpu" min="1" step="1"></label>
             <label class="f">RAM <span class="unit">GiB</span><input type="number" data-path="node.ram_gib" min="1" step="1"></label>
             <label class="f">NVMe, raw <span class="unit">TB</span><input type="number" data-path="node.storage_tb" min="0.1" step="0.05"></label>
-            <label class="f">Sustained IOPS <span class="unit">4 KiB random reads</span><input type="number" data-path="node.iops" min="1000" step="10000"></label>
+            <label class="f">Sustained IOPS <span class="unit">4 KiB random reads</span><input type="number" data-path="node.iops" min="1000" step="1000"></label>
           </div>
         </div>
       </section>
@@ -80,20 +81,20 @@
           <label class="f">IO ceiling <span class="unit">%</span><input type="number" data-path="hypotheses.io_target" data-scale="100" min="10" max="100"></label>
           <label class="f">OS reserve <span class="unit">GiB, at least</span><input type="number" data-path="hypotheses.os_reserve_gib" min="0" step="1"></label>
           <label class="f">OS reserve <span class="unit">% of RAM</span><input type="number" data-path="hypotheses.os_reserve_pct" data-scale="100" min="0" max="90"></label>
-          <label class="f">Transactions <span class="unit">/s per vCPU</span><input type="number" data-path="hypotheses.ops_per_vcpu" min="100" step="500"></label>
+          <label class="f">Transactions <span class="unit">/s per vCPU</span><input type="number" data-path="hypotheses.ops_per_vcpu" min="100" step="100"></label>
         </div>
         <div class="f">Keep the ceilings after the loss of
-          <div class="seg" data-path="hypotheses.loss"><button type="button" data-v="none">Nothing</button><button type="button" data-v="node">One node</button><button type="button" data-v="rack">One rack</button></div>
+          <div class="seg" role="group" aria-label="Loss the ceilings must survive" data-path="hypotheses.loss"><button type="button" data-v="none">Nothing</button><button type="button" data-v="node">One node</button><button type="button" data-v="rack">One rack</button></div>
         </div>
         <details>
           <summary class="small">Growth, index, overheads, cache</summary>
           <div class="fields two">
             <label class="f">Growth <span class="unit">%, records and throughput</span><input type="number" data-path="hypotheses.growth" data-scale="100" min="0" step="5"></label>
             <label class="f">Primary index <span class="unit">B/record</span><input type="number" data-path="hypotheses.index_bytes" min="0" step="1"></label>
-            <label class="f">Write-block overhead <span class="unit">%</span><input type="number" data-path="hypotheses.write_overhead" data-scale="100" min="0" step="1"></label>
+            <label class="f">Write-block overhead <span class="unit">%, device space on top of the records</span><input type="number" data-path="hypotheses.write_overhead" data-scale="100" min="0" step="1"></label>
             <label class="f">Defrag <span class="unit">× device writes</span><input type="number" data-path="hypotheses.defrag_mult" min="1" step="0.05"></label>
-            <label class="f">Reads absorbed by cache <span class="unit">%, device only</span><input type="number" data-path="hypotheses.cache_hit" data-scale="100" min="0" max="100"></label>
-            <label class="f">Compression <span class="unit">% stored size</span><input type="number" data-path="hypotheses.compression" data-scale="100" min="5" max="100"></label>
+            <label class="f">Reads absorbed by cache <span class="unit">%, device engine only</span><input type="number" data-path="hypotheses.cache_hit" data-scale="100" min="0" max="100"></label>
+            <label class="f">Compression <span class="unit">% stored size, on device and in memory</span><input type="number" data-path="hypotheses.compression" data-scale="100" min="5" max="100"></label>
             <label class="f">Record overhead <span class="unit">B, if the size is the payload only</span><input type="number" data-path="hypotheses.record_overhead" min="0" step="1"></label>
             <label class="f">Sprig fill <span class="unit">%, all-flash</span><input type="number" data-path="hypotheses.sprig_fill" data-scale="100" min="5" max="100"></label>
             <label class="f">RAM per sprig <span class="unit">bytes</span><input type="number" data-path="hypotheses.sprig_ram_bytes" min="0" step="1"></label>
@@ -112,36 +113,37 @@
           <div class="why">
             <span class="badge" id="binding">…</span> <span class="nature" title="Computed from the hypotheses: an estimate">estimated</span>
             <p id="explain" class="muted"></p>
+            <div id="checks"></div>
           </div>
         </div>
         <div class="grid k4" id="kpis"></div>
         <h3>Placement</h3>
         <div class="racks" id="racks"></div>
-        <p class="small muted formula">Records = (size + overhead) × records × RF × (1 + growth); on device, × (1 + fragmentation) × compression. Primary index in RAM = 64 B per copy; on flash, 4 KiB sprigs holding 64 entries at the fill share (partition-tree-sprigs rounded up to a power of two, × 4096 partitions × RF), with 10 B of RAM each. Secondary indexes = entries × 14 B × sparseness × RF; set indexes = 16 B per copy. CPU = (reads/s + writes/s) × (1 + growth) ÷ transactions per vCPU. Device IOPS, in 4 KiB blocks = [writes/s × RF × stored size ÷ 4 KiB × defrag (records fill 8 MiB write blocks: the device writes their bytes) + reads/s × (1 − cache hit) × ⌈stored size ÷ 4 KiB⌉ (the blocks a record spans) with records on device, plus one flash index read per read and a read and a write per replica write with the index on flash] × (1 + growth), where stored size = (size + overhead) × compression; counted in 4 KiB blocks, they bound the device bandwidth too. Growth applies to the records and to the throughput alike, replication traffic included. Nodes per resource = demand ÷ what a node offers at its ceiling on the nodes left after the planned loss, never fewer than RF+1, rounded up so that every rack holds as many nodes.</p>
+        <p class="small muted formula">Records = (size + overhead) × records × RF × (1 + growth) × compression, and on device × (1 + write-block overhead). Primary index in RAM = 64 B per copy; on flash, 4 KiB sprigs holding 64 entries at the fill share (partition-tree-sprigs rounded up to a power of two between 256 and 256M, × 4096 partitions × RF, plus 5 B of roots per sprig), with 10 B of RAM each. Secondary indexes = entries × 14 B × sparseness × RF; set indexes = 16 B per copy. CPU = (reads/s + writes/s) × (1 + growth) ÷ transactions per vCPU. Device IOPS, in 4 KiB blocks = [writes/s × RF × stored size ÷ 4 KiB × defrag whenever records reach a device (they fill 8 MiB write blocks: the device writes their bytes) + reads/s × (1 − cache hit) × ⌈stored size ÷ 4 KiB⌉ with the device engine (the blocks a record spans), plus one flash index read per read and a read and a write per replica write with the index on flash] × (1 + growth), where stored size = (size + overhead) × compression; counted in 4 KiB blocks, they bound the device bandwidth too. Growth applies to the records and to the throughput alike, replication traffic included. Nodes per resource = demand ÷ what a node offers at its ceiling on the nodes left after the planned loss, plus the lost nodes, never fewer than RF+1, rounded up so that every rack holds as many nodes.</p>
       </section>
 
       <section class="panel" id="network">
         <h3>Network &amp; replication</h3>
         <p class="small muted">Traffic replication generates across billing boundaries, on the reads and writes at the planning horizon (growth included): between the AZs of one region, or between regions through XDR.</p>
-        <div class="seg wide" data-path="network.mode"><button type="button" data-v="az">Single region · multi-AZ</button><button type="button" data-v="region">Multi-region · XDR</button></div>
+        <div class="seg wide" role="group" aria-label="Deployment" data-path="network.mode"><button type="button" data-v="az">Single region · multi-AZ</button><button type="button" data-v="region">Multi-region · XDR</button></div>
         <div class="netfields" data-when="az">
           <div class="f">Availability zones
-            <div class="seg" data-path="network.azs" data-type="int"><button type="button" data-v="1">1 AZ</button><button type="button" data-v="2">2 AZ</button><button type="button" data-v="3">3 AZ</button></div>
+            <div class="seg" role="group" aria-label="Availability zones" data-path="network.azs" data-type="int" data-label="{v} AZ"><button type="button" data-v="1">1 AZ</button><button type="button" data-v="2">2 AZ</button><button type="button" data-v="3">3 AZ</button></div>
           </div>
           <label class="check"><input type="checkbox" data-path="network.rack_aware"> <span>Rack-aware <span class="muted small">one rack ID per AZ</span></span></label>
-          <label class="check"><input type="checkbox" data-path="network.active_rack"> <span>Active Rack <span class="muted small">EE 7.2+, every master on one rack</span></span></label>
+          <label class="check"><input type="checkbox" data-path="network.active_rack"> <span>Active Rack <span class="muted small">EE 7.2+, every master on one rack; engages when AZs ≤ RF</span></span></label>
           <label class="check"><input type="checkbox" data-path="network.local_read"> <span>Local read <span class="muted small">clients prefer their rack's replica</span></span></label>
           <div class="f" data-when="activeRack">Client placement
-            <div class="seg" data-path="network.client_placement"><button type="button" data-v="distributed">Every AZ</button><button type="button" data-v="single">The active rack's AZ</button></div>
+            <div class="seg" role="group" aria-label="Client placement" data-path="network.client_placement"><button type="button" data-v="distributed">Every AZ</button><button type="button" data-v="single">The active rack's AZ</button></div>
           </div>
           <label class="f" data-when="coLocated">Residual cross-AZ reads <span class="unit">%, fallback and rebalancing</span><input type="number" data-path="network.residual_read" data-scale="100" min="0" max="100"></label>
         </div>
         <div class="netfields" data-when="region">
           <div class="f">Regions
-            <div class="seg" data-path="network.regions" data-type="int"><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button></div>
+            <div class="seg" role="group" aria-label="Regions" data-path="network.regions" data-type="int" data-label="{v}"><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button></div>
           </div>
           <div class="f">XDR topology
-            <div class="seg" data-path="network.xdr_topology"><button type="button" data-v="mesh">Active-active mesh</button><button type="button" data-v="hub">Hub and spoke</button></div>
+            <div class="seg" role="group" aria-label="XDR topology" data-path="network.xdr_topology"><button type="button" data-v="mesh">Active-active mesh</button><button type="button" data-v="hub">Hub and spoke</button></div>
           </div>
           <label class="check"><input type="checkbox" data-path="network.xdr_compression"> <span>XDR compression</span></label>
           <label class="f" data-when="compression">Compression gain <span class="unit">% of the volume</span><input type="number" data-path="network.compression_gain" data-scale="100" min="0" max="90"></label>
@@ -154,14 +156,15 @@
             <tbody></tbody>
           </table>
         </div>
-        <p class="small muted">Rates are the fully-loaded cost per GB moved: AWS and Azure bill cross-AZ traffic in both directions (0.02 by default), Google Cloud on egress only (0.01). Check the current billing of your provider.</p>
+        <p class="small muted" data-when="az">Rates are the fully-loaded cost per GB moved between the AZs of a region: AWS bills both directions ($0.01/GB each way, 0.02), Google Cloud egress only ($0.01 per GiB, entered here per GB), Azure nothing since May 2024 (0). Read on <span class="ratesAsOf"></span>; check the current billing of your provider.</p>
+        <p class="small muted" data-when="region">Rates are the cost per GB shipped between regions, billed on egress by every provider: 0.02 per GB (AWS, Azure) or per GiB (Google Cloud) between two regions of the same continent, more for other pairs. Read on <span class="ratesAsOf"></span>; check the current billing of your provider.</p>
       </section>
     </div>
   </div>
 
   <section class="panel" id="compare">
     <h3>Cost comparison</h3>
-    <p class="small muted">Each provider's cheapest comfortable configuration for the workload, which follows the form, then the configurations you add. A configuration that is tight or short gets, when one exists, a comfortable alternative with as many nodes. Changing the nodes of a recommendation keeps it as entered.</p>
+    <p class="small muted">Each provider's cheapest comfortable configuration for the workload (every load under 85 % of the usable capacity), which follows the form, then the configurations you add. A configuration that is tight or short gets, when one exists, the cheapest instance type that fits comfortably with as many nodes. Changing the nodes of a recommendation keeps it as entered.</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Configuration</th><th class="num">Nodes</th><th>Fit</th><th>Usage at peak<div class="small muted" id="ceilingsHead"></div></th><th class="num">Price<div class="small muted">$/node/hour</div></th><th class="num">Cost<div class="small muted">$/month</div></th><th></th></tr></thead>

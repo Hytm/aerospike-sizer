@@ -217,3 +217,72 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 - Les instances d'un fournisseur restent triées par prix : C4A et Z3 s'intercalent.
 - Effet sur l'exemple par défaut : GCP recommande c4a-highmem-4-lssd × 12 (7 270 $/mois) au lieu de
   z3-highmem-22-highlssd × 3 (11 782 $/mois) ; AWS et Azure inchangés.
+
+## T14 — Revue complète : modèle, réseau, catalogue, service, interface
+
+- Demande de l'utilisateur (2026-11-05) : le code le plus juste possible, sur les fonctionnalités comme sur
+  la qualité. Revue par neuf lentilles (modèle, adéquation et recommandation, réseau, API et prix,
+  interface, catalogue, qualité Go et tests, cohérence des textes, service launchd), chaque constat
+  passé par trois vérificateurs contradictoires : 73 constats confirmés et corrigés, 12 écartés
+  (branche `fix/revue-complete`, 2026-11-12).
+- **Modèle** (`internal/sizing`) :
+  - bornes hautes documentées sur toutes les entrées (taille ≤ 8 Mio, soit le bloc d'écriture ;
+    enregistrements ≤ 10¹⁵ ; débit ≤ 10⁹/s ; nœud générique borné de même) : plus de +Inf ni de NaN, et
+    une réponse non encodable répond désormais 500 au lieu d'un 200 vide ;
+  - `partition-tree-sprigs` reste dans sa plage de configuration (référence : défaut et minimum 256,
+    maximum 256M, puissance de deux ; au-delà de 32K, consulter le support Aerospike, ce que
+    l'explication dit) : le sizer plafonnait à 65 536 et descendait jusqu'à 1 sprig, et son arrondi
+    bouclait sans fin au-delà de 2⁶³ (`objects=1e24` avec l'index flash bloquait une goroutine à 100 %) ;
+  - `index-type flash` est refusé avec `storage-engine memory` (référence de configuration, 7.0) ;
+  - la compression s'applique aussi aux enregistrements en mémoire (`compression` vaut pour
+    `storage-engine memory` depuis 7.0) : T9 disait « disque seulement » ;
+  - le nœud de secours est compté même quand un seul nœud porte une ressource (le besoin affiché par
+    ressource passe de 1 à 2 sur l'exemple par défaut ; le nombre de nœuds ne change pas) ;
+  - recommandation : le nombre de nœuds confortable d'un gabarit est calculé directement (demande ÷ 0,85
+    passée à `Size`) au lieu d'une recherche bornée à 64 pas qui rendait une configuration « tight »
+    au-delà de quelques centaines de nœuds ; « confortable » veut dire partout « toute charge sous
+    85 % » (le seuil de 80 % propre aux alternatives disparaît) ; un gabarit dont une ressource est
+    inutilisable (RAM entièrement réservée à l'OS) n'est plus proposé comme alternative, le suivant l'est.
+- **Réseau** (`internal/network`) :
+  - Azure ne facture plus le trafic entre zones de disponibilité depuis mai 2024 (Microsoft Learn,
+    « Availability zones overview », section Inter-zone networking) : taux par défaut 0 ; sur
+    l'exemple par défaut, Azure L8s_v3 × 9 (5 309 $/mois) devient la configuration la moins chère ;
+  - XDR a ses propres taux inter-régions (`network.region_rates`, 0,02 $/Go par défaut, facturés en
+    sortie par chaque fournisseur entre deux régions d'un même continent) au lieu des taux inter-AZ ;
+    date de lecture des taux : `network.RatesAsOf` (2026-11-11), affichée ;
+  - rack-aware avec RF > AZ : les copies au-delà d'une par rack sont placées au hasard (doc rack-aware :
+    « the extra replicas are distributed randomly ») et traversent les AZ avec la probabilité
+    (AZ − 1)/AZ ; T7 les comptait gratuites (RF3 sur 2 AZ : 2,0 × écritures × taille au lieu de 1,5) ;
+  - hub and spoke : chaque écriture atteint les régions − 1 autres régions, comme en maillage, puisque
+    chaque région détient une copie complète et paie un cluster entier (le facteur 1 sous-estimait le
+    volume dès trois régions) ; la note XDR dit que chaque cluster régional est dimensionné pour le débit
+    saisi ;
+  - avertissements : sans rack-awareness, le placement par hachage met toutes les copies d'environ un
+    enregistrement sur AZ^(RF−1) dans la même AZ ; l'avertissement RF > AZ parle d'AZ, pas de racks.
+- **Catalogue** : les disques Z3 font 3 000 Gio (Google publie ses SSD locaux en Gio, comme pour C4A en
+  T13) → 3 221,23 Go, soit 6,9 % de stockage de plus par nœud ; région GCP par défaut europe-west1
+  (Belgique : europe-west9 n'offre ni Z3 ni C4A) ; date des prix de référence 2026-10-30 ; les IOPS
+  i4i, Z3 et Lsv3 sont celles du catalogue de wellness, dont la mesure n'est pas consignée (voir les
+  choix ouverts) ; `tag` et `live_prices` quittent le catalogue, le livre de prix dit ce qu'il lit en
+  direct.
+- **Service** (`internal/service`) : la relève ne réutilise plus l'exemplaire en service quand une sonde
+  `/health` échoue par hasard (sonde répétée trois fois ; si rien ne répond mais qu'un exemplaire est
+  chargé par launchd, le déploiement refuse : `sizer uninstall` d'abord ; sinon les plists périmés sont
+  retirés avant l'installation) ; un bootstrap raté retire son plist comme une relève ratée ; `status`
+  ne lit plus les `state = active` des blocs de coalition ; un second signal pendant le drain termine le
+  processus ; `service.Serve` isole et teste le cycle écoute → drain.
+- **API et serveur** (`internal/web`) : hôte vérifié (421 pour un hôte autre que loopback ou l'adresse
+  configurée, contre le DNS rebinding ; ajout à T4) ; `/api/defaults` dit quels fournisseurs sont lus
+  en direct (`SIZER_OFFLINE=1` était invisible de l'interface), le seuil « tight » et la date des taux ;
+  `Response.Defaults` supprimé ; `Generic.Checks` remonte les remarques topologiques du nœud générique
+  (moins de nœuds que d'AZ sans rack-awareness) ; note quand la perte d'un rack ne peut pas être
+  planifiée (pas de racks modélisés).
+- **Interface** : une valeur hors boutons (RF 4 à 8, AZ 4 à 12, régions 5 à 8, préremplie par l'URL)
+  reçoit un bouton synthétisé ; entiers préremplis arrondis ; lettres d'AZ jusqu'à l ; « no node count
+  works » à la place de « undefined nodes needed » ; bandeau des prix et bouton ↻ fidèles au serveur ;
+  saisie bornée aux limites des champs ; accessibilité des segments (`aria-pressed`, nom de groupe).
+- **Choix laissés à l'utilisateur** (non modifiés) : cache de lecture à 70 % par défaut (Aerospike n'a
+  pas de cache de lecture par défaut ; valeur héritée du sizer d'origine et partagée avec wellness) ;
+  moteur mémoire : données planifiées à 70 % de la RAM alors que 7.0+ les gère en blocs d'écriture
+  préalloués avec stop-writes à 70 % et un plan à 50 % comme un device ; IOPS Z3 (50 000 par disque)
+  contre la règle T13 appliquée aux C4A (moitié des écritures publiées, soit 250 000 par disque Z3).

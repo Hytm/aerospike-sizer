@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hytm/aerospike-sizer/internal/catalog"
 )
@@ -54,6 +55,12 @@ func TestMemoryEngineKeepsRecordsInRAMAndPersistsThemOnRequest(t *testing.T) {
 	if !near(d.Storage, 1024*500e6*2*1.3) || !near(d.IOPS, 40000*2*1024.0/4096*1.3*1.3) || d.ReadIOPS != 0 {
 		t.Errorf("persisted memory engine demand = %+v", d)
 	}
+	// Records are compressed in memory as on the device (7.0+).
+	h.Compression = 0.5
+	d = Detailed(w, h)
+	if !near(d.DataRAM, 1024*500e6*2*1.3*0.5) || !near(d.Storage, 1024*500e6*2*1.3*0.5) || !near(d.WriteIOPS, 40000*2*512.0/4096*1.3*1.3) {
+		t.Errorf("compressed memory engine demand = %+v", d)
+	}
 }
 
 // Device IO is counted in 4 KiB blocks, as in the Aerospike sizing estimator spreadsheet: a read
@@ -101,7 +108,40 @@ func TestFlashIndexFollowsTheCapacityPlanningGuide(t *testing.T) {
 	if !near(d.IndexIOPS, 1000+2*100*2) || !near(d.Storage, d.Data+d.FlashIndex) {
 		t.Errorf("index IOPS = %v, storage = %v", d.IndexIOPS, d.Storage)
 	}
-	if e := (Sizing{Nodes: 4, Binding: ByStorage}).Explain(w, d, Amounts{Storage: 1e15, RAM: 1e15, CPU: 1e3, IOPS: 1e6}, h, Layout{RF: 2}); !strings.Contains(e, "32768 sprigs per partition") {
+	e := (Sizing{Nodes: 4, Binding: ByStorage}).Explain(w, d, Amounts{Storage: 1e15, RAM: 1e15, CPU: 1e3, IOPS: 1e6}, h, Layout{RF: 2})
+	if !strings.Contains(e, "32768 sprigs per partition") || strings.Contains(e, "Aerospike Support") {
+		t.Errorf("explanation = %q", e)
+	}
+}
+
+// partition-tree-sprigs stays in the configurable range: 256 at least, 256M at most, a power of two.
+func TestSprigsPerPartitionStayInTheConfigurableRange(t *testing.T) {
+	h := DefaultHypotheses()
+	h.Growth = 0
+	w := Workload{ObjectSize: 100, RF: 2, Engine: Device, IndexOn: OnFlash}
+	for _, c := range []struct {
+		objects, fill float64
+		want          int
+	}{
+		{0, 0.5, 256},
+		{1e6, 0.5, 256},
+		{4e9, 0.5, 32768},
+		{1e10, 0.5, 131072},
+		{1e13, 0.05, MaxSprigsPerPart},
+		{1e24, 0.5, MaxSprigsPerPart}, // used to overflow the rounding loop and hang
+	} {
+		w.Objects, h.SprigFill = c.objects, c.fill
+		d := Detailed(w, h)
+		if d.SprigsPerPartition != c.want {
+			t.Errorf("%v records at %v fill: %d sprigs per partition, want %d", c.objects, c.fill, d.SprigsPerPartition, c.want)
+		}
+		if want := 4096.0 * 2 * float64(c.want) * (4096 + 5); !near(d.FlashIndex, want) || !near(d.Sprigs, 4096*2*float64(c.want)*10) {
+			t.Errorf("%v records: flash index %v (want %v), sprig RAM %v", c.objects, d.FlashIndex, want, d.Sprigs)
+		}
+	}
+	w.Objects, h.SprigFill = 1e10, 0.5
+	e := (Sizing{Nodes: 4, Binding: ByStorage}).Explain(w, Detailed(w, h), Amounts{Storage: 1e15, RAM: 1e15, CPU: 1e3, IOPS: 1e6}, h, Layout{RF: 2})
+	if !strings.Contains(e, "131072 sprigs per partition (above 32,768: ask Aerospike Support)") {
 		t.Errorf("explanation = %q", e)
 	}
 }
@@ -119,6 +159,66 @@ func TestSecondaryAndSetIndexes(t *testing.T) {
 	d = Detailed(w, h)
 	if !near(d.FlashSindex, 2e7*3*14*1.5) || d.Sindex != 0 || !near(d.Storage, d.Data+d.FlashSindex) {
 		t.Errorf("sindex on flash = %v, storage %v", d.FlashSindex, d.Storage)
+	}
+}
+
+func TestZeroWorkloadNeedsTheTopologyFloorOnly(t *testing.T) {
+	h := DefaultHypotheses()
+	node := Amounts{Storage: 1e12, RAM: 64 * catalog.GiB, CPU: 8, IOPS: 1e5}
+	l := Layout{RF: 2, AZs: 1, Racks: 1}
+	// Memory engine: nothing at all to hold or serve.
+	d := Detailed(Workload{RF: 2, Engine: Memory}.Normalize(), h)
+	if d.Amounts != (Amounts{}) || d.BlocksPerRead != 0 {
+		t.Errorf("empty memory namespace demand = %+v", d)
+	}
+	if s := Size(d.Amounts, node, h, l); s.Nodes != 3 || s.Binding != ByTopology || s.Need[ByStorage] != 0 || s.Need[ByRAM] != 0 {
+		t.Errorf("sizing = %+v", s)
+	}
+	// All-flash: the smallest configurable index is still allocated.
+	d = Detailed(Workload{RF: 2, Engine: Device, IndexOn: OnFlash}.Normalize(), h)
+	if d.SprigsPerPartition != 256 || !near(d.Storage, 4096*2*256*4101) || !near(d.RAM, 4096*2*256*10) || d.IOPS != 0 || d.BlocksPerRead != 1 {
+		t.Errorf("empty all-flash namespace demand = %+v", d)
+	}
+	if s := Size(d.Amounts, node, h, l); s.Nodes != 3 || s.Binding != ByTopology || s.Need[ByStorage] != 2 {
+		t.Errorf("sizing = %+v", s)
+	}
+}
+
+// The largest values Normalize lets through keep every figure finite and the computation short.
+func TestExtremeInputsStayFinite(t *testing.T) {
+	w := Workload{ObjectSize: 1e300, Objects: 1e300, ReadsPerSec: 1e300, WritesPerSec: 1e300, RF: 99, Engine: Device, IndexOn: OnFlash, SindexEntries: 1e300, SindexOn: OnFlash, SetIndex: true}.Normalize()
+	h := Hypotheses{Growth: 1e300, IndexBytes: 1e300, RecordOverhead: 1e300, WriteOverhead: 1e300, Compression: 1, DefragMult: 1e300, StorageFill: 1, RAMFill: 1,
+		OSReserveGiB: 1e300, OSReservePct: 0, IOTarget: 1, OpsPerVCPU: 100, CPUTarget: 1, SprigFill: 0.05, SprigRAMBytes: 1e300, SindexEntryBytes: 1e300, SindexSparseness: 1e300}.Normalize()
+	node := Amounts{Storage: 1e17, RAM: 1e6 * catalog.GiB, CPU: 1e5, IOPS: 1e9}
+	l := Layout{RF: w.RF, AZs: 12, Racks: 12}
+	done := make(chan struct{})
+	var d Detail
+	var s Sizing
+	var f Fit
+	go func() {
+		defer close(done)
+		d = Detailed(w, h)
+		s = Size(d.Amounts, node, h, l)
+		f = Evaluate(d.Amounts, node, 3, h, l)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("sizing the largest workload did not finish")
+	}
+	finite := func(name string, v float64) {
+		if math.IsInf(v, 0) || math.IsNaN(v) {
+			t.Errorf("%s = %v", name, v)
+		}
+	}
+	for _, c := range Resources {
+		finite("demand "+string(c), d.Of(c))
+		finite("utilization "+string(c), s.Utilization[c])
+		finite("load "+string(c), f.Load[c])
+	}
+	finite("TPS", d.TPS)
+	if d.SprigsPerPartition != MaxSprigsPerPart || w.RF != MaxRF || s.Nodes != 0 {
+		t.Errorf("sprigs %d, RF %d, nodes %d", d.SprigsPerPartition, w.RF, s.Nodes)
 	}
 }
 
@@ -184,6 +284,11 @@ func TestSizeKeepsHeadroomAndFillsRacks(t *testing.T) {
 	if s.Nodes != 5 || !near(s.Utilization[ByStorage], 3.5e12/5e12) {
 		t.Errorf("without loss, sizing = %+v", s)
 	}
+	// A resource one node would carry still needs its spare when a loss is planned.
+	h.Loss = NodeLoss
+	if s := Size(Amounts{Storage: 1e11}, node, h, Layout{RF: 2, AZs: 1, Racks: 1}); s.Need[ByStorage] != 2 || s.Nodes != 3 || s.Binding != ByTopology {
+		t.Errorf("one node's worth of storage: sizing = %+v", s)
+	}
 }
 
 func TestSizeFloorsAtRFPlusOne(t *testing.T) {
@@ -208,8 +313,18 @@ func TestSizeWithoutUsableResource(t *testing.T) {
 	if s.Nodes != 0 || s.Binding != ByRAM {
 		t.Fatalf("sizing = %+v", s)
 	}
+	// The other resources are still sized; the failing one is left out.
+	if _, ok := s.Need[ByRAM]; ok || s.Need[ByStorage] != 4 || s.Need[ByCPU] != 2 || s.Need[ByIOPS] != 2 || s.Need[ByTopology] != 3 {
+		t.Errorf("need = %v", s.Need)
+	}
 	if e := s.Explain(w, d, tiny, h, Layout{RF: 2}); !strings.Contains(e, "no usable RAM") {
 		t.Errorf("explanation = %q", e)
+	}
+	// Too much demand for the shape: no sensible count either.
+	small := Amounts{Storage: 1e8, RAM: 1e15, CPU: 1e6, IOPS: 1e9}
+	s = Size(d.Amounts, small, h, Layout{RF: 2, AZs: 1, Racks: 1})
+	if e := s.Explain(w, d, small, h, Layout{RF: 2}); s.Nodes != 0 || s.Binding != ByStorage || !strings.Contains(e, "offers too little storage") {
+		t.Errorf("sizing = %+v, explanation = %q", s, e)
 	}
 }
 
@@ -240,6 +355,11 @@ func TestEvaluateGradesLoadWithOneNodeDown(t *testing.T) {
 	if f.Status != Short || !strings.Contains(f.Checks[0], "one rack down") {
 		t.Errorf("rack loss: %+v", f)
 	}
+	// A shape without usable RAM is short whatever the count.
+	f = Evaluate(Amounts{RAM: 1e9}, Amounts{Storage: 1e12, RAM: 4 * catalog.GiB, CPU: 8, IOPS: 1e5}, 3, h, l)
+	if f.Status != Short || !strings.Contains(f.Checks[0], "No usable RAM on this node shape.") || len(f.Load) != 0 {
+		t.Errorf("no usable RAM: %+v", f)
+	}
 }
 
 func TestEvaluateTopology(t *testing.T) {
@@ -269,12 +389,12 @@ func TestRecommendPicksTheCheapestComfortableFit(t *testing.T) {
 		t.Errorf("the recommendation must be comfortable: %+v", f)
 	}
 	// No other instance type reaches a comfortable fit for less, nodes penalty included.
-	score := func(inst catalog.Instance, n int) float64 { return inst.PriceHour * float64(n) * (1 + float64(n)/50) }
+	score := func(inst catalog.Instance, n int) float64 {
+		return inst.PriceHour * float64(n) * (1 + float64(n)/nodePenaltyPer)
+	}
 	for _, inst := range p.Instances {
-		if s := Size(d, OfInstance(inst), h, l); s.Nodes > 0 {
-			if n, ok := comfortableNodes(d, OfInstance(inst), s.Nodes, h, l); ok && score(inst, n) < score(o.Instance, o.Nodes)-1e-9 {
-				t.Errorf("%s × %d scores %v, under %s × %d at %v", inst.Name, n, score(inst, n), o.Instance.Name, o.Nodes, score(o.Instance, o.Nodes))
-			}
+		if n, ok := comfortableNodes(d, OfInstance(inst), h, l); ok && score(inst, n) < score(o.Instance, o.Nodes)-1e-9 {
+			t.Errorf("%s × %d scores %v, under %s × %d at %v", inst.Name, n, score(inst, n), o.Instance.Name, o.Nodes, score(o.Instance, o.Nodes))
 		}
 	}
 	if o.Nodes%3 != 0 {
@@ -291,16 +411,24 @@ func TestRecommendAddsNodesUntilComfortable(t *testing.T) {
 	if o, ok := Recommend(p, Amounts{Storage: 1.3e12}, h, l); !ok || o.Nodes != 4 {
 		t.Errorf("recommendation = %+v, %v", o, ok)
 	}
-	// 700 TB holds on 1,001 nodes; comfort would take more than 64 more: the holding one is kept.
-	if o, ok := Recommend(p, Amounts{Storage: 7e14}, h, l); !ok || o.Nodes != 1001 {
+	// 700 TB hold on 1,001 nodes at 100 %; 1,178 keep the load under 85 % with one node down.
+	o, ok := Recommend(p, Amounts{Storage: 7e14}, h, l)
+	if !ok || o.Nodes != 1178 {
 		t.Errorf("recommendation = %+v, %v", o, ok)
+	}
+	if f := Evaluate(Amounts{Storage: 7e14}, OfInstance(p.Instances[0]), o.Nodes, h, l); f.Status != OK || f.Load[ByStorage] > TightLoad {
+		t.Errorf("fit = %+v", f)
+	}
+	// Beyond MaxNodes only the holding count is offered, if any.
+	if o, ok := Recommend(p, Amounts{Storage: 6.9e15}, h, l); !ok || o.Nodes != 9859 || Evaluate(Amounts{Storage: 6.9e15}, OfInstance(p.Instances[0]), o.Nodes, h, l).Status != Tight {
+		t.Errorf("recommendation near the bound = %+v, %v", o, ok)
 	}
 	if _, ok := Recommend(p, Amounts{RAM: 1e18}, h, l); ok {
 		t.Error("an impossible demand has no recommendation")
 	}
 }
 
-func TestComfortableStaysUnderTheComfortLoad(t *testing.T) {
+func TestComfortableIsTheCheapestShapeThatFitsWell(t *testing.T) {
 	h := DefaultHypotheses()
 	p, _ := catalog.Get("azure")
 	l := Layout{RF: 2, AZs: 3, Racks: 3}
@@ -309,13 +437,28 @@ func TestComfortableStaysUnderTheComfortLoad(t *testing.T) {
 	if !ok {
 		t.Fatal("no comfortable instance")
 	}
-	f := Evaluate(d, OfInstance(inst), 3, h, l)
-	if f.MaxLoad() > ComfortLoad {
-		t.Errorf("%s: max load %v", inst.Name, f.MaxLoad())
+	if f := Evaluate(d, OfInstance(inst), 3, h, l); f.Status != OK {
+		t.Errorf("%s: %+v", inst.Name, f)
 	}
 	smaller := p.Instances[0]
-	if smaller.Name != inst.Name && Evaluate(d, OfInstance(smaller), 3, h, l).MaxLoad() <= ComfortLoad {
-		t.Errorf("%s is comfortable too and smaller than %s", smaller.Name, inst.Name)
+	if smaller.Name != inst.Name && Evaluate(d, OfInstance(smaller), 3, h, l).Status == OK {
+		t.Errorf("%s fits well too and costs less than %s", smaller.Name, inst.Name)
+	}
+	if _, ok := Comfortable(p, Amounts{RAM: 1e18}, h, l, 3); ok {
+		t.Error("an impossible demand has no comfortable shape")
+	}
+}
+
+// A shape with no usable RAM is skipped, so that a larger shape that fits is offered.
+func TestComfortableSkipsShapesWithAnUnusableResource(t *testing.T) {
+	h := DefaultHypotheses()
+	h.OSReserveGiB = 16 // the whole RAM of an i4i.large
+	p, _ := catalog.Get("aws")
+	l := Layout{RF: 2, AZs: 3, Racks: 3}
+	w := Workload{ObjectSize: 1024, Objects: 125e6, ReadsPerSec: 1000, WritesPerSec: 100, RF: 2, Engine: Device}
+	// i4i.large: no usable RAM; i4i.xlarge: 19.4 GiB of index on 2 × 11.2 GiB, tight; i4i.2xlarge fits.
+	if inst, ok := Comfortable(p, DemandOf(w, h), h, l, 3); !ok || inst.Name != "i4i.2xlarge" {
+		t.Errorf("comfortable = %+v, %v", inst, ok)
 	}
 }
 
@@ -327,7 +470,27 @@ func TestExplainShowsTheThroughputAtTheHorizon(t *testing.T) {
 	l := Layout{RF: 2, AZs: 1, Racks: 1}
 	// 312,000 tx/s = 20.8 vCPU on 9.6 usable per node: 3 serving nodes plus the spare.
 	s := Size(d.Amounts, node, h, l)
-	if e := s.Explain(w, d, node, h, l); s.Nodes != 4 || s.Binding != ByCPU || !strings.Contains(e, "312,000 transactions/s") {
+	if e := s.Explain(w, d, node, h, l); s.Nodes != 4 || s.Binding != ByCPU || !strings.Contains(e, "312,000 transactions/s") || !strings.Contains(e, "one node down") {
+		t.Errorf("sizing %+v, explanation = %q", s, e)
+	}
+}
+
+func TestExplainNamesWhatDrivesTheSizing(t *testing.T) {
+	h := DefaultHypotheses()
+	w := workload()
+	w.Objects = 5e9 // 774.86 GiB of primary index
+	d := Detailed(w, h)
+	node := Amounts{Storage: 1e13, RAM: 128 * catalog.GiB, CPU: 16, IOPS: 1e7}
+	l := Layout{RF: 2, AZs: 1, Racks: 1}
+	s := Size(d.Amounts, node, h, l)
+	e := s.Explain(w, d, node, h, l)
+	if s.Nodes != 11 || s.Binding != ByRAM || !strings.Contains(e, "Memory drives the sizing: 774.86 GiB (primary index 774.86 GiB; RF2, 30% growth included), 80.64 GiB usable per node") {
+		t.Errorf("sizing %+v, explanation = %q", s, e)
+	}
+	big := Amounts{Storage: 1e15, RAM: 1e15, CPU: 1e6, IOPS: 1e9}
+	l = Layout{RF: 2, AZs: 2, Racks: 2}
+	s = Size(d.Amounts, big, h, l)
+	if e := s.Explain(w, d, big, h, l); !strings.Contains(e, "topology floor (RF+1 = 3)") || !strings.Contains(e, "Rounded up to 4 nodes so that each of the 2 racks") {
 		t.Errorf("sizing %+v, explanation = %q", s, e)
 	}
 }
@@ -337,8 +500,22 @@ func TestNormalize(t *testing.T) {
 	if w.ObjectSize != 0 || w.RF != 1 || w.Engine != Device || w.Persist || w.IndexOn != InRAM || w.SindexOn != InRAM || w.SindexEntries != 0 {
 		t.Errorf("workload = %+v", w)
 	}
+	// The memory engine keeps its primary index in memory; the secondary indexes may go on flash.
+	w = Workload{RF: 2, Engine: Memory, IndexOn: OnFlash, SindexOn: OnFlash}.Normalize()
+	if w.Engine != Memory || w.IndexOn != InRAM || w.SindexOn != OnFlash {
+		t.Errorf("memory engine workload = %+v", w)
+	}
+	w = Workload{ObjectSize: 1e30, Objects: 1e30, ReadsPerSec: 1e30, WritesPerSec: 1e30, RF: 99, SindexEntries: 1e30}.Normalize()
+	if w.ObjectSize != MaxObjectSize || w.Objects != MaxObjects || w.ReadsPerSec != MaxRate || w.WritesPerSec != MaxRate || w.RF != MaxRF || w.SindexEntries != MaxSindexEntries {
+		t.Errorf("bounded workload = %+v", w)
+	}
 	h := Hypotheses{CacheHit: 2, StorageFill: 0, RAMFill: 3, DefragMult: 0.5, Loss: "all", Compression: 0, SindexSparseness: 0.2, OSReservePct: 2}.Normalize()
 	if h.CacheHit != 1 || h.StorageFill != 0.05 || h.RAMFill != 1 || h.DefragMult != 1 || h.Loss != NodeLoss || h.Compression != 0.05 || h.SindexSparseness != 1 || h.OSReservePct != 0.9 {
 		t.Errorf("hypotheses = %+v", h)
+	}
+	h = Hypotheses{Growth: 1e9, IndexBytes: 1e9, RecordOverhead: 1e9, WriteOverhead: 1e9, DefragMult: 1e9, OpsPerVCPU: 1e9, OSReserveGiB: 1e9, SprigRAMBytes: 1e9, SindexEntryBytes: 1e9, SindexSparseness: 1e9}.Normalize()
+	if h.Growth != MaxGrowth || h.IndexBytes != MaxBytesPerEntry || h.RecordOverhead != MaxObjectSize || h.WriteOverhead != MaxWriteOverhead || h.DefragMult != MaxDefragMult ||
+		h.OpsPerVCPU != MaxOpsPerVCPU || h.OSReserveGiB != MaxOSReserveGiB || h.SprigRAMBytes != MaxBytesPerEntry || h.SindexEntryBytes != MaxBytesPerEntry || h.SindexSparseness != MaxSparseness {
+		t.Errorf("bounded hypotheses = %+v", h)
 	}
 }

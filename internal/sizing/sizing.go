@@ -36,7 +36,7 @@ type Workload struct {
 	RF           int       `json:"rf"`
 	Engine       Engine    `json:"engine"`
 	Persist      bool      `json:"persist"`  // memory engine: records are also written to a device
-	IndexOn      Placement `json:"index_on"` // primary index placement
+	IndexOn      Placement `json:"index_on"` // primary index placement; in RAM with the memory engine
 	// SindexEntries is the number of secondary index entries one record contributes, summed over
 	// the indexes: one per scalar bin indexed, one per distinct element for a list or map bin.
 	SindexEntries float64   `json:"sindex_entries"`
@@ -44,29 +44,39 @@ type Workload struct {
 	SetIndex      bool      `json:"set_index"` // set indexes on every record
 }
 
-// MaxRF bounds the replication factor.
-const MaxRF = 8
+// Bounds of a workload: the largest values an estimate accepts, so that every figure stays finite
+// whatever the request says. MaxObjectSize is the write block, the largest record Aerospike stores.
+const (
+	MaxRF            = 8
+	MaxObjectSize    = 8 << 20
+	MaxObjects       = 1e15
+	MaxRate          = 1e9 // transactions per second
+	MaxSindexEntries = 1e4
+)
 
-// Normalize clamps the workload to meaningful values.
+// Normalize clamps the workload to meaningful values and drops the placements its engine rules out.
 func (w Workload) Normalize() Workload {
-	w.ObjectSize = max(w.ObjectSize, 0)
-	w.Objects = max(w.Objects, 0)
-	w.ReadsPerSec = max(w.ReadsPerSec, 0)
-	w.WritesPerSec = max(w.WritesPerSec, 0)
+	w.ObjectSize = clamp(w.ObjectSize, 0, MaxObjectSize)
+	w.Objects = clamp(w.Objects, 0, MaxObjects)
+	w.ReadsPerSec = clamp(w.ReadsPerSec, 0, MaxRate)
+	w.WritesPerSec = clamp(w.WritesPerSec, 0, MaxRate)
 	w.RF = min(max(w.RF, 1), MaxRF)
 	if w.Engine != Memory {
 		w.Engine = Device
 		w.Persist = false
 	}
-	if w.IndexOn != OnFlash {
+	// index-type flash does not work with storage-engine memory (configuration reference, 7.0).
+	if w.IndexOn != OnFlash || w.Engine == Memory {
 		w.IndexOn = InRAM
 	}
 	if w.SindexOn != OnFlash {
 		w.SindexOn = InRAM
 	}
-	w.SindexEntries = max(w.SindexEntries, 0)
+	w.SindexEntries = clamp(w.SindexEntries, 0, MaxSindexEntries)
 	return w
 }
+
+func clamp(v, lo, hi float64) float64 { return min(max(v, lo), hi) }
 
 // OnDevice tells whether records are written to a device.
 func (w Workload) OnDevice() bool { return w.Engine == Device || w.Persist }
@@ -95,8 +105,8 @@ type Hypotheses struct {
 	Growth         float64 `json:"growth"`          // growth of the records and of the throughput over the planning horizon (0.3 = +30 %)
 	IndexBytes     float64 `json:"index_bytes"`     // primary index per record copy (64 B)
 	RecordOverhead float64 `json:"record_overhead"` // bytes added to the object size when it is the payload only
-	WriteOverhead  float64 `json:"write_overhead"`  // fragmentation on top of the storage fill
-	Compression    float64 `json:"compression"`     // stored size of records as a share of their size (1: no compression)
+	WriteOverhead  float64 `json:"write_overhead"`  // write-block overhead: device space on top of the stored records (0.1 = +10 %)
+	Compression    float64 `json:"compression"`     // stored size of records as a share of their size (1: no compression), on device and in memory
 	DefragMult     float64 `json:"defrag_mult"`     // device writes amplification from defragmentation
 	CacheHit       float64 `json:"cache_hit"`       // share of reads served without a device read
 	StorageFill    float64 `json:"storage_fill"`    // highest device usage per node
@@ -118,22 +128,39 @@ type Hypotheses struct {
 
 // Constants of the Aerospike storage layout.
 const (
-	Partitions       = 4096 // partitions of a namespace
-	RecordsPerSprig  = 64   // 64 entries of 64 B fill one 4 KiB index block
-	SprigBlockBytes  = 4096 // flash index block
-	SprigRootBytes   = 5    // sprig roots written at shutdown, on disk
-	SetIndexBytes    = 16   // set index per record copy
-	MaxSprigsPerPart = 1 << 16
+	Partitions      = 4096 // partitions of a namespace
+	RecordsPerSprig = 64   // 64 entries of 64 B fill one 4 KiB index block
+	SprigBlockBytes = 4096 // flash index block
+	SprigRootBytes  = 5    // sprig roots written at shutdown, on disk
+	SetIndexBytes   = 16   // set index per record copy
+	// MinSprigsPerPart and MaxSprigsPerPart are the range of partition-tree-sprigs in the
+	// configuration reference: default and minimum 256, maximum 256M, always a power of two.
+	MinSprigsPerPart = 256
+	MaxSprigsPerPart = 1 << 28
+	// SupportSprigsPerPart is the value above which the reference asks Enterprise licensees to
+	// consult Aerospike Support.
+	SupportSprigsPerPart = 1 << 15
 	// DeviceBlockBytes is the unit device IO is counted in: the 4 KiB block the sustained random
 	// read IOPS of the catalog are measured with.
 	DeviceBlockBytes = 4096
 )
 
+// Bounds of the hypotheses, for the same reason as the workload's.
+const (
+	MaxGrowth        = 100 // +10,000 %
+	MaxBytesPerEntry = 1 << 20
+	MaxWriteOverhead = 10
+	MaxDefragMult    = 100
+	MaxOpsPerVCPU    = 1e7
+	MaxOSReserveGiB  = 1e6
+	MaxSparseness    = 100
+)
+
 // DefaultHypotheses follow the capacity planning guide: 64 B of primary index per copy, device usage
 // planned at 50 % (the default defrag-lwm-pct) with no write overhead on top, 10 % of RAM for the OS,
 // sprigs half full with 10 B of RAM each, secondary index entries of 14 B at 1.5 sparseness. The ceilings
-// (storage 50 %, RAM 70 %, CPU 60 % of 15,000 transactions per vCPU, IO 100 %) and the spare node are
-// aerospike-wellness's defaults too.
+// (storage 50 %, RAM 70 %, CPU 60 % of 15,000 transactions per vCPU, IO 100 %), the spare node and the
+// 70 % of reads served by the cache are aerospike-wellness's defaults too.
 func DefaultHypotheses() Hypotheses {
 	return Hypotheses{
 		Growth: 0.3, IndexBytes: 64, RecordOverhead: 0, WriteOverhead: 0, Compression: 1, DefragMult: 1.3, CacheHit: 0.7,
@@ -144,31 +171,31 @@ func DefaultHypotheses() Hypotheses {
 
 // Normalize clamps the hypotheses to meaningful values.
 func (h Hypotheses) Normalize() Hypotheses {
-	h.Growth = max(h.Growth, 0)
-	h.IndexBytes = max(h.IndexBytes, 0)
-	h.RecordOverhead = max(h.RecordOverhead, 0)
-	h.WriteOverhead = max(h.WriteOverhead, 0)
+	h.Growth = clamp(h.Growth, 0, MaxGrowth)
+	h.IndexBytes = clamp(h.IndexBytes, 0, MaxBytesPerEntry)
+	h.RecordOverhead = clamp(h.RecordOverhead, 0, MaxObjectSize)
+	h.WriteOverhead = clamp(h.WriteOverhead, 0, MaxWriteOverhead)
 	h.Compression = ceiling(h.Compression)
-	h.DefragMult = max(h.DefragMult, 1)
-	h.CacheHit = min(max(h.CacheHit, 0), 1)
+	h.DefragMult = clamp(h.DefragMult, 1, MaxDefragMult)
+	h.CacheHit = clamp(h.CacheHit, 0, 1)
 	h.StorageFill = ceiling(h.StorageFill)
 	h.RAMFill = ceiling(h.RAMFill)
 	h.IOTarget = ceiling(h.IOTarget)
 	h.CPUTarget = ceiling(h.CPUTarget)
-	h.OpsPerVCPU = max(h.OpsPerVCPU, 100)
-	h.OSReserveGiB = max(h.OSReserveGiB, 0)
-	h.OSReservePct = min(max(h.OSReservePct, 0), 0.9)
+	h.OpsPerVCPU = clamp(h.OpsPerVCPU, 100, MaxOpsPerVCPU)
+	h.OSReserveGiB = clamp(h.OSReserveGiB, 0, MaxOSReserveGiB)
+	h.OSReservePct = clamp(h.OSReservePct, 0, 0.9)
 	if h.Loss != NoLoss && h.Loss != RackLoss {
 		h.Loss = NodeLoss
 	}
 	h.SprigFill = ceiling(h.SprigFill)
-	h.SprigRAMBytes = max(h.SprigRAMBytes, 0)
-	h.SindexEntryBytes = max(h.SindexEntryBytes, 0)
-	h.SindexSparseness = max(h.SindexSparseness, 1)
+	h.SprigRAMBytes = clamp(h.SprigRAMBytes, 0, MaxBytesPerEntry)
+	h.SindexEntryBytes = clamp(h.SindexEntryBytes, 0, MaxBytesPerEntry)
+	h.SindexSparseness = clamp(h.SindexSparseness, 1, MaxSparseness)
 	return h
 }
 
-func ceiling(v float64) float64 { return min(max(v, 0.05), 1) }
+func ceiling(v float64) float64 { return clamp(v, 0.05, 1) }
 
 // Constraint names what drives a node count.
 type Constraint string
@@ -207,6 +234,12 @@ func (a Amounts) Of(c Constraint) float64 {
 		return a.IOPS
 	}
 	return 0
+}
+
+// Scaled returns every amount divided by a share: the demand that fills the same capacity to that
+// share only.
+func (a Amounts) Scaled(share float64) Amounts {
+	return Amounts{Storage: a.Storage / share, RAM: a.RAM / share, CPU: a.CPU / share, IOPS: a.IOPS / share}
 }
 
 // OfInstance returns the raw resources of an instance type.
@@ -263,10 +296,11 @@ func Detailed(w Workload, h Hypotheses) Detail {
 	copies := objects * float64(w.RF)
 	record := (w.ObjectSize + h.RecordOverhead) * copies
 	onDevice := record * (1 + h.WriteOverhead) * h.Compression
-	stored := (w.ObjectSize + h.RecordOverhead) * h.Compression // one record copy on the device
+	stored := (w.ObjectSize + h.RecordOverhead) * h.Compression // one record copy, as stored
 	var d Detail
 	if w.Engine == Memory {
-		d.DataRAM = record
+		// Records are compressed in memory too (storage-engine memory, 7.0+).
+		d.DataRAM = record * h.Compression
 	}
 	if w.OnDevice() {
 		d.Data = onDevice
@@ -280,11 +314,8 @@ func Detailed(w Workload, h Hypotheses) Detail {
 		d.ReadIOPS = w.ReadsPerSec * (1 - h.CacheHit) * d.BlocksPerRead
 	}
 	if w.IndexOn == OnFlash {
-		// Sprigs per partition: records over 64 entries at the fill share, over the partitions,
-		// rounded up to a power of two; every copy of every partition has that many.
-		perPartition := math.Ceil(objects / (RecordsPerSprig * h.SprigFill) / Partitions)
-		d.SprigsPerPartition = min(nextPowerOfTwo(perPartition), MaxSprigsPerPart)
-		sprigs := float64(Partitions * w.RF * d.SprigsPerPartition)
+		d.SprigsPerPartition = sprigsPerPartition(objects, h.SprigFill)
+		sprigs := float64(Partitions) * float64(w.RF) * float64(d.SprigsPerPartition)
 		d.FlashIndex = sprigs * (SprigBlockBytes + SprigRootBytes)
 		d.Sprigs = sprigs * h.SprigRAMBytes
 		// Each read looks its entry up on flash; each replica write reads and writes its block.
@@ -311,10 +342,17 @@ func Detailed(w Workload, h Hypotheses) Detail {
 	return d
 }
 
-func nextPowerOfTwo(v float64) int {
-	n := 1
-	for float64(n) < v {
-		n *= 2
+// sprigsPerPartition returns the partition-tree-sprigs an all-flash namespace needs: records over
+// 64 entries at the fill share, over the partitions, rounded up to a power of two within the
+// configurable range.
+func sprigsPerPartition(objects, fill float64) int {
+	need := math.Ceil(objects / (RecordsPerSprig * fill) / Partitions)
+	if need >= MaxSprigsPerPart {
+		return MaxSprigsPerPart
+	}
+	n := MinSprigsPerPart
+	for float64(n) < need {
+		n <<= 1
 	}
 	return n
 }
@@ -349,20 +387,23 @@ const MaxNodes = 10000
 
 // Sizing is the node count a node shape calls for.
 type Sizing struct {
-	Nodes   int                `json:"nodes"` // 0 when no sensible node count works
-	Binding Constraint         `json:"binding"`
-	Rounded bool               `json:"rounded"` // nodes added to fill every rack equally
-	Need    map[Constraint]int `json:"need"`    // nodes each resource needs, spare nodes included
+	Nodes   int        `json:"nodes"` // 0 when no sensible node count works
+	Binding Constraint `json:"binding"`
+	Rounded bool       `json:"rounded"` // nodes added to fill every rack equally
+	// Need is the nodes each resource needs, spare nodes included; a resource for which no sensible
+	// count works is left out.
+	Need map[Constraint]int `json:"need"`
 	// Utilization is the share of the capacity (Hypotheses.Capacity) used at peak with every node up.
 	Utilization map[Constraint]float64 `json:"utilization"`
 }
 
 // Size computes the nodes of one shape the demand needs: each resource of a node is used up to its
 // ceiling on the nodes left after the planned loss, never fewer than RF+1, rounded up to fill
-// every rack.
+// every rack. When a resource has no sensible count, Nodes is 0 and Binding names it.
 func Size(d, node Amounts, h Hypotheses, l Layout) Sizing {
 	s := Sizing{Nodes: l.MinNodes(), Binding: ByTopology, Need: map[Constraint]int{ByTopology: l.MinNodes()}, Utilization: map[Constraint]float64{}}
 	usable := h.Usable(node)
+	var failed Constraint
 	for _, c := range Resources {
 		demand := d.Of(c)
 		if demand <= 0 {
@@ -371,16 +412,19 @@ func Size(d, node Amounts, h Hypotheses, l Layout) Sizing {
 		}
 		ratio := demand / usable.Of(c)
 		if usable.Of(c) <= 0 || ratio > MaxNodes {
-			return Sizing{Binding: c, Need: s.Need, Utilization: s.Utilization}
+			if failed == "" {
+				failed = c
+			}
+			continue
 		}
-		need := int(math.Ceil(ratio))
-		for h.Serving(need, l) < int(math.Ceil(ratio)) {
-			need++
-		}
+		need := nodesFor(int(math.Ceil(ratio)), h, l)
 		s.Need[c] = need
 		if need > s.Nodes {
 			s.Nodes, s.Binding = need, c
 		}
+	}
+	if failed != "" {
+		return Sizing{Binding: failed, Need: s.Need, Utilization: map[Constraint]float64{}}
 	}
 	if l.Racks > 1 && s.Nodes%l.Racks != 0 {
 		s.Nodes += l.Racks - s.Nodes%l.Racks
@@ -391,6 +435,19 @@ func Size(d, node Amounts, h Hypotheses, l Layout) Sizing {
 	}
 	s.Utilization = utilization(d, h.Capacity(node), s.Nodes)
 	return s
+}
+
+// nodesFor returns the fewest nodes that leave the serving count after the planned loss: the
+// serving nodes plus the lost ones, even when one node would carry the load.
+func nodesFor(serving int, h Hypotheses, l Layout) int {
+	need := serving
+	if h.Loss != NoLoss {
+		need++
+	}
+	for h.Serving(need, l) < serving {
+		need++
+	}
+	return need
 }
 
 // utilization returns the share of the capacity of nodes the demand uses, per resource.

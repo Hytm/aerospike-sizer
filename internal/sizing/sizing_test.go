@@ -26,8 +26,8 @@ func TestDemandCountsEveryCopyWithOverheadAndGrowth(t *testing.T) {
 	if want := 500e6 * 2 * 64 * 1.3; !near(d.RAM, want) {
 		t.Errorf("RAM = %v, want %v (index only on device)", d.RAM, want)
 	}
-	// 1 KiB records: a quarter of a 4 KiB block per copy written, one block per read.
-	if want := (40000*2*1024.0/4096*1.3 + 200000*0.3) * 1.3; !near(d.IOPS, want) || d.BlocksPerRead != 1 {
+	// 1 KiB records: a quarter of a 4 KiB block per copy written, one block per read (no cache by default).
+	if want := (40000*2*1024.0/4096*1.3 + 200000) * 1.3; !near(d.IOPS, want) || d.BlocksPerRead != 1 {
 		t.Errorf("IOPS = %v, want %v (throughput grows too)", d.IOPS, want)
 	}
 	if want := 240000 * 1.3 / 15000.0; !near(d.CPU, want) || !near(d.TPS, 240000*1.3) {
@@ -37,7 +37,7 @@ func TestDemandCountsEveryCopyWithOverheadAndGrowth(t *testing.T) {
 		t.Errorf("grown workload = %+v", grown)
 	}
 	h.RecordOverhead, h.Compression = 56, 0.5
-	if d := DemandOf(workload(), h); !near(d.Storage, 1080*500e6*2*1.1*1.3*0.5) || !near(d.IOPS, (40000*2*540.0/4096*1.3+200000*0.3)*1.3) {
+	if d := DemandOf(workload(), h); !near(d.Storage, 1080*500e6*2*1.1*1.3*0.5) || !near(d.IOPS, (40000*2*540.0/4096*1.3+200000)*1.3) {
 		t.Errorf("with overhead and compression, storage = %v, IOPS = %v", d.Storage, d.IOPS)
 	}
 }
@@ -517,5 +517,41 @@ func TestNormalize(t *testing.T) {
 	if h.Growth != MaxGrowth || h.IndexBytes != MaxBytesPerEntry || h.RecordOverhead != MaxObjectSize || h.WriteOverhead != MaxWriteOverhead || h.DefragMult != MaxDefragMult ||
 		h.OpsPerVCPU != MaxOpsPerVCPU || h.OSReserveGiB != MaxOSReserveGiB || h.SprigRAMBytes != MaxBytesPerEntry || h.SindexEntryBytes != MaxBytesPerEntry || h.SindexSparseness != MaxSparseness {
 		t.Errorf("bounded hypotheses = %+v", h)
+	}
+}
+
+// Records in memory fill write blocks like a device's: the write-block overhead applies to them, and
+// ForDemand plans them at the storage fill while the indexes keep the RAM fill.
+func TestMemoryRecordsArePlannedAtTheStorageFill(t *testing.T) {
+	h := DefaultHypotheses()
+	h.WriteOverhead = 0.1
+	w := workload()
+	w.Engine = Memory
+	d := Detailed(w, h)
+	if !near(d.DataRAM, 1024*500e6*2*1.3*1.1) {
+		t.Errorf("records in memory = %v", d.DataRAM)
+	}
+	share := d.DataRAM / d.RAM
+	if want := 1 / ((1-share)/0.7 + share/0.5); !near(h.ForDemand(d).RAMFill, want) || h.ForDemand(d).StorageFill != 0.5 {
+		t.Errorf("RAM fill for the demand = %v, want %v", h.ForDemand(d).RAMFill, want)
+	}
+	if hd := h.ForDemand(Detail{Amounts: Amounts{RAM: 100}, DataRAM: 100}); hd.RAMFill != 0.5 {
+		t.Errorf("records only: RAM fill %v, want the storage fill", hd.RAMFill)
+	}
+	if hd := h.ForDemand(Detail{Amounts: Amounts{RAM: 100}}); hd.RAMFill != 0.7 {
+		t.Errorf("indexes only: RAM fill %v, want the RAM fill", hd.RAMFill)
+	}
+	// 100 GiB of records with a negligible index need as many nodes in memory as on a device of
+	// the same size (the OS reserve aside): the memory engine is sized with the storage fill.
+	big := Workload{ObjectSize: 1 << 20, Objects: 1e5, RF: 1, Engine: Memory}
+	h = DefaultHypotheses()
+	h.OSReserveGiB, h.OSReservePct = 0, 0
+	memory := Detailed(big, h)
+	hm := h.ForDemand(memory)
+	inMemory := Size(memory.Amounts, Amounts{Storage: 1, RAM: 64 * catalog.GiB, CPU: 64, IOPS: 1e6}, hm, Layout{RF: 1, AZs: 1, Racks: 1})
+	big.Engine = Device
+	onDevice := Size(Detailed(big, h).Amounts, Amounts{Storage: 64 * catalog.GiB, RAM: 1e15, CPU: 64, IOPS: 1e6}, h, Layout{RF: 1, AZs: 1, Racks: 1})
+	if inMemory.Nodes != onDevice.Nodes || inMemory.Binding != ByRAM || onDevice.Binding != ByStorage {
+		t.Errorf("in memory %+v, on device %+v", inMemory, onDevice)
 	}
 }

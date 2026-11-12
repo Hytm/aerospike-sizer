@@ -286,3 +286,25 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   moteur mémoire : données planifiées à 70 % de la RAM alors que 7.0+ les gère en blocs d'écriture
   préalloués avec stop-writes à 70 % et un plan à 50 % comme un device ; IOPS Z3 (50 000 par disque)
   contre la règle T13 appliquée aux C4A (moitié des écritures publiées, soit 250 000 par disque Z3).
+
+## T15 — Cache de lecture nul, données en mémoire au plafond de stockage, IOPS des Z3
+
+- Choix de l'utilisateur (2026-11-12) sur les trois points laissés ouverts par T14, appliqués ici et dans
+  wellness (sa décision T43) pour que les deux outils gardent le même nombre de nœuds :
+  - **Cache de lecture : 0 % par défaut.** Aerospike ne sert aucune lecture depuis un cache par défaut
+    (le post-write cache ne garde que les écritures récentes, `read-page-cache` est désactivé) ; le
+    70 % hérité du sizer d'origine surestimait les lectures absorbées de 3,3×. L'hypothèse devient
+    « lectures servies par un cache », à renseigner avec le `cache_read_pct` mesuré d'un cluster réel.
+    L'exemple par défaut passe de 111 800 à 293 800 IOPS (lectures 260 000) ; nœuds et recommandations
+    ne changent pas (le CPU dimensionne).
+  - **Données en mémoire planifiées au plafond de stockage.** En 7.0+, `storage-engine memory` range les
+    enregistrements dans des blocs d'écriture préalloués (`data-size`), défragmentés et soumis à
+    stop-writes comme un device : ils reçoivent le surcoût de blocs d'écriture et sont planifiés à
+    `StorageFill` (50 %), les index restant à `RAMFill` (70 %). Le plafond RAM d'une demande est la
+    moyenne harmonique pondérée des deux (`Hypotheses.ForDemand`), renvoyé dans `hypotheses.ram_fill`
+    de la réponse pour que les jauges et les textes le montrent. Un namespace mémoire demande ainsi
+    1,4× plus de mémoire pour ses enregistrements qu'avant.
+  - **IOPS des Z3 : règle T13.** La moitié des IOPS d'écriture aléatoire publiées, soit 250 000 par
+    disque Titanium SSD de 3 Tio (500 000 publiés) : 250 000 à 3 000 000 par nœud au lieu de 50 000 à
+    550 000 (un disque Z3 valait 1,3 disque C4A alors que Google le donne 5× plus rapide). Les chiffres
+    i4i et Lsv3 restent ceux du catalogue wellness, sans mesure consignée.

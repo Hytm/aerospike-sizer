@@ -247,6 +247,9 @@ func TestMemoryNamespaceIsPlannedAtTheStorageFill(t *testing.T) {
 	if !near(resp.Generic.Usable.RAM, resp.Hypotheses.RAMFill*(128-12.8)*catalog.GiB, 1) {
 		t.Errorf("usable RAM = %v", resp.Generic.Usable.RAM)
 	}
+	if resp.Generic.Binding != sizing.ByRAM || !strings.Contains(resp.Generic.Explain, "51% of RAM") || !strings.Contains(resp.Generic.Explain, "50% storage fill of the records in memory") {
+		t.Errorf("explanation = %q", resp.Generic.Explain)
+	}
 	req.Workload.Engine = sizing.Device
 	if resp := Compute(req, referenceQuoter{}); resp.Hypotheses.RAMFill != 0.7 {
 		t.Errorf("device engine: RAM fill = %v", resp.Hypotheses.RAMFill)

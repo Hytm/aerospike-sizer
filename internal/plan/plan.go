@@ -116,7 +116,7 @@ type Response struct {
 	Generic    Generic           `json:"generic"`
 	Layout     sizing.Layout     `json:"layout"`
 	Workload   sizing.Workload   `json:"workload"`   // as normalized
-	Hypotheses sizing.Hypotheses `json:"hypotheses"` // as normalized
+	Hypotheses sizing.Hypotheses `json:"hypotheses"` // as normalized; ram_fill is the ceiling the demand calls for (Hypotheses.ForDemand)
 	Settings   network.Settings  `json:"settings"`   // as normalized: options their prerequisites rule out are off
 	Network    network.Traffic   `json:"network"`
 	Rows       []Row             `json:"rows"`

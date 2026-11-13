@@ -187,6 +187,9 @@ func (s Sizing) Explain(w Workload, d Detail, node Amounts, h Hypotheses, l Layo
 		fmt.Fprintf(&b, "Disk storage drives the sizing: %s to place (%s; %s), %s usable per node (%s).", units.SI(d.Storage), d.storageParts(), scope, units.SI(usable.Storage), h.ceilingText(ByStorage))
 	case ByRAM:
 		fmt.Fprintf(&b, "Memory drives the sizing: %s (%s; %s), %s usable per node (%s).", units.IEC(d.RAM), d.ramParts(), scope, units.IEC(usable.RAM), h.ceilingText(ByRAM))
+		if d.DataRAM > 0 {
+			fmt.Fprintf(&b, " That ceiling weighs the RAM fill of the indexes with the %s storage fill of the records in memory.", units.Pct(h.StorageFill))
+		}
 	case ByCPU:
 		fmt.Fprintf(&b, "CPU drives the sizing: %s transactions/s at the horizon (%s growth) need %s at %s per vCPU, %s usable per node (%s).", units.Count(d.TPS), units.Pct(h.Growth), ByCPU.amount(d.CPU), units.Count(h.OpsPerVCPU), ByCPU.amount(usable.CPU), h.ceilingText(ByCPU))
 	case ByIOPS:

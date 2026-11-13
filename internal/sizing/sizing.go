@@ -110,7 +110,7 @@ type Hypotheses struct {
 	DefragMult     float64 `json:"defrag_mult"`     // device writes amplification from defragmentation
 	CacheHit       float64 `json:"cache_hit"`       // share of reads a cache serves (post-write cache, read-page-cache): the cache_read_pct of a live cluster, 0 unless measured
 	StorageFill    float64 `json:"storage_fill"`    // highest device usage per node
-	RAMFill        float64 `json:"ram_fill"`        // highest share of the RAM left after the OS reserve
+	RAMFill        float64 `json:"ram_fill"`        // highest share of the RAM left after the OS reserve, for the indexes; ForDemand lowers it for records kept in memory
 	OSReserveGiB   float64 `json:"os_reserve_gib"`  // memory kept for the OS and the process, at least
 	OSReservePct   float64 `json:"os_reserve_pct"`  // … and as a share of the node's RAM
 	IOTarget       float64 `json:"io_target"`       // highest share of the sustained IOPS used at peak

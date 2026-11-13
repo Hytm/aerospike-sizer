@@ -285,7 +285,7 @@
       return '<div class="kpi"><div class="l">' + titles[res.key] + '</div><div class="v">' + amount(res.key, demand) + "</div>" +
         (parts ? '<div class="n">' + parts + "</div>" : "") +
         '<div class="n">' + needed + " · " + amount(res.key, g.usable[res.key]) + " usable per node</div>" +
-        (g.nodes ? gauge(util, ceiling, load) + '<div class="n">' + pct(util) + " used at peak · ceiling " + pct(ceiling) + "</div>" : "") +
+        (g.nodes ? gauge(util, ceiling, load) + '<div class="n">' + pct(util) + " used at peak · ceiling " + pct(ceiling) + (res.key === "ram" && d.data_ram > 0 ? " (records at the storage fill)" : "") + "</div>" : "") +
         "</div>";
     }).join("");
     $("ceilingsHead").textContent = "ceilings: " + RESOURCES.map(function (res) { return res.label + " " + pct(h[res.ceiling]); }).join(" · ");

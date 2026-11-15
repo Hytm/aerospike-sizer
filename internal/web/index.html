@@ -93,7 +93,7 @@
             <label class="f">Primary index <span class="unit">B/record</span><input type="number" data-path="hypotheses.index_bytes" min="0" step="1"></label>
             <label class="f">Write-block overhead <span class="unit">%, device space on top of the records</span><input type="number" data-path="hypotheses.write_overhead" data-scale="100" min="0" step="1"></label>
             <label class="f">Defrag <span class="unit">× device writes</span><input type="number" data-path="hypotheses.defrag_mult" min="1" step="0.05"></label>
-            <label class="f">Reads served by a cache <span class="unit">%, cache_read_pct of a live cluster; 0 unless measured</span><input type="number" data-path="hypotheses.cache_hit" data-scale="100" min="0" max="100"></label>
+            <label class="f">Reads served by a cache <span class="unit">%, cache_read_pct of a live cluster; 0 unless measured</span><input type="number" data-path="hypotheses.cache_hit" data-scale="100" min="0" max="100" step="0.1"></label>
             <label class="f">Compression <span class="unit">% stored size, on device and in memory</span><input type="number" data-path="hypotheses.compression" data-scale="100" min="5" max="100"></label>
             <label class="f">Record overhead <span class="unit">B, if the size is the payload only</span><input type="number" data-path="hypotheses.record_overhead" min="0" step="1"></label>
             <label class="f">Sprig fill <span class="unit">%, all-flash</span><input type="number" data-path="hypotheses.sprig_fill" data-scale="100" min="5" max="100"></label>

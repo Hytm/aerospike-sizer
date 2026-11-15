@@ -61,6 +61,28 @@ func TestGoogleDrivesAreConvertedFromGiB(t *testing.T) {
 	}
 }
 
+// AWS publishes the 100 % random-write IOPS of each i4i size (instance store table of
+// docs.aws.amazon.com/ec2/latest/instancetypes/so.html, read 2026-11-15): 27,500 per 468 GB of
+// drive, so 55,000 for the 937 GB drive and 220,000 for each 3,750 GB drive. Planning IOPS are half
+// of it, the T13 rule (decision T16), as in wellness's catalog.
+func TestAWSi4iPlanHalfThePublishedWriteIOPS(t *testing.T) {
+	published := map[string]float64{
+		"i4i.large": 27500, "i4i.xlarge": 55000, "i4i.2xlarge": 110000,
+		"i4i.4xlarge": 220000, "i4i.8xlarge": 440000, "i4i.16xlarge": 880000,
+	}
+	p, _ := Get("aws")
+	for name, write := range published {
+		i, ok := p.Instance(name)
+		if !ok {
+			t.Errorf("%s missing", name)
+			continue
+		}
+		if i.IOPS != write/2 {
+			t.Errorf("%s: %v IOPS, want %v (half of %v published)", name, i.IOPS, write/2, write)
+		}
+	}
+}
+
 // TestGCPAxion checks every C4A type against the published shape ladder and the us-east1 price
 // decomposition of decision T13 (per vCPU, per GiB and per Titanium SSD); a Google price change
 // updates the three rates here and in T13 together.

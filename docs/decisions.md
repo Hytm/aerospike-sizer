@@ -307,4 +307,24 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   - **IOPS des Z3 : règle T13.** La moitié des IOPS d'écriture aléatoire publiées, soit 250 000 par
     disque Titanium SSD de 3 Tio (500 000 publiés) : 250 000 à 3 000 000 par nœud au lieu de 50 000 à
     550 000 (un disque Z3 valait 1,3 disque C4A alors que Google le donne 5× plus rapide). Les chiffres
-    i4i et Lsv3 restent ceux du catalogue wellness, sans mesure consignée.
+    i4i et Lsv3 restent ceux du catalogue wellness, sans mesure consignée. (amendé le 2026-11-15, T16 :
+    les i4i suivent désormais la règle T13 ; les Lsv3 gardent 60 000 par disque.)
+
+## T16 — IOPS des i4i par la règle T13, cache de lecture mesuré envoyé par wellness
+
+- Choix de l'utilisateur (2026-11-15, revue de wellness, sa décision T44) : toute instance du catalogue
+  est planifiée à la moitié des IOPS d'écriture aléatoire publiées par son fournisseur (règle T13), pour
+  que les deux outils gardent le même nombre de nœuds (T11, T15). Les i4i passent ainsi de 50 000 à
+  500 000 IOPS par nœud à 13 750, 27 500, 55 000, 110 000, 220 000 et 440 000 : AWS publie 27 500 IOPS
+  d'écriture pour le disque de 468 Go, 55 000 pour celui de 937 Go et 220 000 par disque de 3 750 Go
+  (table « Instance store specifications » de docs.aws.amazon.com/ec2/latest/instancetypes/so.html,
+  lue le 2026-11-15). Les anciens chiffres venaient du catalogue de wellness, sans mesure consignée.
+- Z3 (250 000 par disque, T15) et C4A (37 500 par disque, T13) suivaient déjà la règle. Les Lsv3 gardent
+  60 000 par disque : Microsoft ne publie qu'un chiffre d'IOPS NVMe au mieux (400 000 par disque de
+  1,92 To, file de 256), sans chiffre d'écriture, ce qui ne permet pas d'appliquer la règle ; à revoir
+  avec une mesure ACT.
+- Effet sur l'exemple par défaut : AWS recommande toujours i4i.xlarge, mais 15 nœuds au lieu de 12 (les
+  IOPS dimensionnent : 76 % de charge IOPS à 15 nœuds) ; GCP et Azure inchangés.
+- wellness préremplit désormais l'hypothèse « lectures servies par un cache » avec le `cache_read_pct`
+  mesuré du cluster, au dixième de point (moyenne pondérée par les lectures) ; le champ accepte donc une
+  décimale (`step="0.1"`).

@@ -49,7 +49,7 @@
     "ram_gib": 16,
     "drives": 1,
     "drive_gb": 468,
-    "iops": 50000,
+    "iops": 13750,
     "price_hour": 0.172
    },
    {
@@ -58,7 +58,7 @@
     "ram_gib": 32,
     "drives": 1,
     "drive_gb": 937,
-    "iops": 100000,
+    "iops": 27500,
     "price_hour": 0.343
    },
    {
@@ -67,7 +67,7 @@
     "ram_gib": 64,
     "drives": 1,
     "drive_gb": 1875,
-    "iops": 150000,
+    "iops": 55000,
     "price_hour": 0.686
    },
    {
@@ -76,7 +76,7 @@
     "ram_gib": 128,
     "drives": 1,
     "drive_gb": 3750,
-    "iops": 200000,
+    "iops": 110000,
     "price_hour": 1.373
    },
    {
@@ -85,7 +85,7 @@
     "ram_gib": 256,
     "drives": 2,
     "drive_gb": 3750,
-    "iops": 350000,
+    "iops": 220000,
     "price_hour": 2.746
    },
    {
@@ -94,7 +94,7 @@
     "ram_gib": 512,
     "drives": 4,
     "drive_gb": 3750,
-    "iops": 500000,
+    "iops": 440000,
     "price_hour": 5.491
    }
   ]

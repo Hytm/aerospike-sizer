@@ -26,7 +26,8 @@ What it computes:
   or a rack, at least RF+1 nodes, the same number in every rack. Aerospike Wellness sizes with the same
   conventions. Device IO is counted in 4 KiB blocks, the unit of the instances' sustained IOPS: a read
   that finds its record fetches the blocks the record spans (no cache serves reads unless a measured
-  cache_read_pct says so), one that finds nothing stops at the primary index and reads no block (the
+  cache_read_pct says so), one that finds nothing stops at the primary index and reads no record
+  block, though with the index on flash every read, found or not, still reads its index entry (the
   share of reads that find a record is a workload input, 100 % by default; every read still costs
   CPU and network), a write the bytes of every copy (records fill 8 MiB write blocks). Records kept
   in memory (7.0+ write blocks) are planned at the device fill, the indexes at the RAM fill.

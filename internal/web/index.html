@@ -39,7 +39,7 @@
             <label class="f">Reads/s<input type="number" data-path="workload.reads_per_sec" min="0" step="1000"></label>
             <label class="f">Writes/s<input type="number" data-path="workload.writes_per_sec" min="0" step="1000"></label>
           </div>
-          <label class="f" data-when="device">Reads that find a record <span class="unit">%, only these read the device; a miss stops at the primary index</span><input type="number" data-path="workload.reads_found" data-scale="100" min="0" max="100" step="0.1"></label>
+          <label class="f" data-when="device">Reads that find a record <span class="unit">%, only these read record blocks; a miss stops at the primary index</span><input type="number" data-path="workload.reads_found" data-scale="100" min="0" max="100" step="0.1"></label>
           <div class="f">Replication factor
             <div class="seg" role="group" aria-label="Replication factor" data-path="workload.rf" data-type="int" data-label="RF{v}"><button type="button" data-v="1">RF1</button><button type="button" data-v="2">RF2</button><button type="button" data-v="3">RF3</button></div>
           </div>

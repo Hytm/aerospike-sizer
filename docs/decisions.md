@@ -353,7 +353,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 - Effet sur l'exemple par défaut : aucun (100 %). À 37 % de lectures trouvées : lectures 260 000 →
   96 200 IOPS, total 293 800 → 130 000 ; CPU, trafic et nœuds inchangés (le CPU dimensionne).
 - wellness transmet désormais comme RF les **copies stockées** quand le facteur configuré les dépasse
-  (`replication-factor 99` sur 2 à 4 nœuds stocke une copie par nœud) : min(facteur configuré,
-  `effective_replication_factor` quand un nœud le rapporte supérieur à 0), avec une note qui nomme les
-  namespaces concernés (sa décision T31, amendée le 2026-11-16, T44). Aucun changement de code ici : le
-  sizer dimensionne les copies qu'on lui donne (RF borné à 8, plancher RF + 1 nœuds).
+  (`replication-factor 99` sur 2 à 4 nœuds stocke une copie par nœud) : min(facteur configuré, plus
+  grand `effective_replication_factor` que rapportent les nœuds, quand il est supérieur à 0), avec une
+  note qui nomme les namespaces concernés (sa décision T31, amendée le 2026-11-16, T44). Aucun
+  changement de code ici : le sizer dimensionne les copies qu'on lui donne (RF borné à 8, plancher RF + 1
+  nœuds). Au-delà de 8 copies stockées (`replication-factor 99` sur 9 nœuds ou plus), wellness les
+  transmet toutes et les dimensionne toutes ; le sizer en planifie 8, donc moins de nœuds, et une note
+  d'avertissement de wellness le dit (ses décisions T29 et T31).

@@ -180,7 +180,8 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   et surestimait l'écriture des petits (300 o × RF2 : moins d'un dixième de bloc, compté 2).
 - L'unité est le bloc de 4 Kio, celle des IOPS soutenues du catalogue (lectures aléatoires de 4 Kio).
   Taille stockée d'une copie = (taille + surcoût) × compression.
-  - **Lecture** : ⌈taille stockée ÷ 4 Kio⌉ blocs (`blocks_per_read`), × (1 − cache).
+  - **Lecture** : ⌈taille stockée ÷ 4 Kio⌉ blocs (`blocks_per_read`), × (1 − cache) (amendé le
+    2026-11-16, T17 : sur les seules lectures qui trouvent un enregistrement).
   - **Écriture** : les enregistrements remplissent des blocs d'écriture de 8 Mio, le disque écrit leurs
     octets : écritures × RF × taille stockée ÷ 4 Kio × défragmentation.
   - Index flash inchangé (des blocs de 4 Kio déjà).
@@ -328,3 +329,31 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 - wellness préremplit désormais l'hypothèse « lectures servies par un cache » avec le `cache_read_pct`
   mesuré du cluster, au dixième de point (moyenne pondérée par les lectures) ; le champ accepte donc une
   décimale (`step="0.1"`).
+
+## T17 — Blocs de lecture sur les seules lectures qui trouvent un enregistrement, copies stockées envoyées par wellness
+
+- Choix de l'utilisateur (2026-11-16, revue de wellness, sa décision T44) : une lecture qui ne trouve pas
+  d'enregistrement est tranchée par l'index primaire et n'atteint aucun disque, mais le sizer lui
+  comptait les blocs de 4 Kio d'une lecture (T12). Sur les clusters réels analysés par wellness, plus
+  d'une centaine de mesures de namespaces sur disque ont plus de 30 % de lectures sans enregistrement,
+  jusqu'à 94 % : leurs IOPS de lecture étaient surestimées jusqu'à environ 16 fois.
+- Convention partagée avec wellness (T11) : toutes les lectures comptent pour le CPU et le trafic réseau,
+  comme avant ; les blocs de lecture disque ne portent que sur les lectures qui trouvent un
+  enregistrement : lectures × part trouvée × (1 − cache) × ⌈taille stockée ÷ 4 Kio⌉. Le cache
+  (`cache_read_pct` mesuré, T16) se rapporte aux lectures qui atteignent le stockage, donc aux lectures
+  trouvées : les deux parts se multiplient. L'IO de l'index sur flash (T9) reste d'un bloc par lecture,
+  trouvée ou non : une lecture sans enregistrement cherche quand même son entrée.
+- Nouveau champ de la charge `workload.reads_found` : part des lectures qui trouvent un enregistrement,
+  en fraction de 0 à 1, bornée à [0, 1] comme les autres parts ; absent ou `null`, il vaut 1, si bien
+  que les appelants et les liens antérieurs gardent leurs chiffres. La réponse renvoie la part retenue
+  (`workload.reads_found` normalisé). Même nom en paramètre d'URL (T10), que wellness préremplit avec la
+  part mesurée sur le cluster. Le formulaire l'affiche en %, au dixième, dans la section Workload, avec
+  le moteur device seulement (sans lui, aucune lecture n'atteint de disque) ; l'explication et la carte
+  IOPS citent la part quand elle est sous 100 %.
+- Effet sur l'exemple par défaut : aucun (100 %). À 37 % de lectures trouvées : lectures 260 000 →
+  96 200 IOPS, total 293 800 → 130 000 ; CPU, trafic et nœuds inchangés (le CPU dimensionne).
+- wellness transmet désormais comme RF les **copies stockées** quand le facteur configuré les dépasse
+  (`replication-factor 99` sur 2 à 4 nœuds stocke une copie par nœud) : min(facteur configuré,
+  `effective_replication_factor` quand un nœud le rapporte supérieur à 0), avec une note qui nomme les
+  namespaces concernés (sa décision T31, amendée le 2026-11-16, T44). Aucun changement de code ici : le
+  sizer dimensionne les copies qu'on lui donne (RF borné à 8, plancher RF + 1 nœuds).

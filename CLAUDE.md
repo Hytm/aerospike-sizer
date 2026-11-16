@@ -26,11 +26,12 @@ locale (`make ci`), et on n'en ajoute pas.
   Un prix indique sa source (live, référence).
 - **Interface unifiée avec aerospike-wellness** (décision T8) : reprendre ses jetons et composants
   (`internal/web/static/app.css`) plutôt qu'en inventer.
-- **Dimensionnement partagé avec aerospike-wellness** (décisions T5, T11, T12, T15) : croissance sur les
-  données et le débit, plancher RF + 1 nœuds, réserve OS, plafonds, IO en blocs de 4 Kio, aucun cache de
-  lecture par défaut, enregistrements en mémoire au plafond de stockage, IOPS du catalogue. Un changement
-  de convention se fait dans les deux outils (ici et `~/work/aerospike-wellness`) et se consigne dans les
-  deux `docs/decisions.md`.
+- **Dimensionnement partagé avec aerospike-wellness** (décisions T5, T11, T12, T15, T17) : croissance sur
+  les données et le débit, plancher RF + 1 nœuds, réserve OS, plafonds, IO en blocs de 4 Kio, blocs de
+  lecture sur les seules lectures qui trouvent un enregistrement, aucun cache de lecture par défaut,
+  enregistrements en mémoire au plafond de stockage, IOPS du catalogue. Un changement de convention se
+  fait dans les deux outils (ici et `~/work/aerospike-wellness`) et se consigne dans les deux
+  `docs/decisions.md`.
 
 ## Commandes
 

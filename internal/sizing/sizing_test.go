@@ -89,6 +89,53 @@ func TestDeviceIOCountsBlocks(t *testing.T) {
 	}
 }
 
+func share(v float64) *float64 { return &v }
+
+// A read that finds no record is answered from the primary index: it costs CPU (and a flash index
+// lookup) like any read, but no record block on the device.
+func TestDeviceReadBlocksCountTheReadsThatFindARecord(t *testing.T) {
+	h := DefaultHypotheses()
+	all := Detailed(workload(), h) // field absent: every read finds its record, as before
+	if !near(all.ReadIOPS, 200000*1.3) || all.BlocksPerRead != 1 {
+		t.Fatalf("reads all found: read IOPS %v, %v blocks per read", all.ReadIOPS, all.BlocksPerRead)
+	}
+	for _, c := range []struct {
+		found *float64
+		want  float64 // share of the read blocks charged
+	}{
+		{nil, 1}, {share(1), 1}, {share(0.37), 0.37}, {share(0), 0}, {share(-0.5), 0}, {share(1.7), 1},
+	} {
+		w := workload()
+		w.ReadsFound = c.found
+		d := Detailed(w, h)
+		if !near(d.ReadIOPS, all.ReadIOPS*c.want) || !near(d.WriteIOPS, all.WriteIOPS) || !near(d.CPU, all.CPU) || !near(d.TPS, all.TPS) {
+			t.Errorf("found %v: read IOPS %v (want %v), writes %v, CPU %v", w.FoundShare(), d.ReadIOPS, all.ReadIOPS*c.want, d.WriteIOPS, d.CPU)
+		}
+	}
+	// The cache share is measured over the reads that reach the storage: it applies on top.
+	h.CacheHit = 0.5
+	w := workload()
+	w.ReadsFound = share(0.37)
+	if d := Detailed(w, h); !near(d.ReadIOPS, 200000*1.3*0.37*0.5) {
+		t.Errorf("found 37 %%, cache 50 %%: read IOPS %v", d.ReadIOPS)
+	}
+	// Large records: the found reads fetch every block their record spans.
+	h = DefaultHypotheses()
+	h.Growth = 0
+	large := Workload{ObjectSize: 12000, Objects: 1e6, ReadsPerSec: 50000, RF: 2, Engine: Device, IndexOn: OnFlash, ReadsFound: share(0.37)}
+	d := Detailed(large, h)
+	if !near(d.ReadIOPS, 50000*0.37*3) || !near(d.IndexIOPS, 50000) {
+		t.Errorf("large records on an all-flash index: read IOPS %v, index IOPS %v (every read looks its entry up)", d.ReadIOPS, d.IndexIOPS)
+	}
+	e := (Sizing{Nodes: 3, Binding: ByIOPS}).Explain(large, d, Amounts{IOPS: 1e5}, h, Layout{RF: 2})
+	if !strings.Contains(e, "record reads of 3 blocks for the 37% of the reads that find a record") {
+		t.Errorf("explanation = %q", e)
+	}
+	if e := (Sizing{Nodes: 3, Binding: ByIOPS}).Explain(workload(), all, Amounts{IOPS: 1e5}, DefaultHypotheses(), Layout{RF: 2}); strings.Contains(e, "find a record") {
+		t.Errorf("every read found: explanation = %q", e)
+	}
+}
+
 // The capacity planning guide's all-flash example: 4 billion records, RF2, sprigs half full.
 func TestFlashIndexFollowsTheCapacityPlanningGuide(t *testing.T) {
 	h := DefaultHypotheses()
@@ -508,6 +555,20 @@ func TestNormalize(t *testing.T) {
 	w = Workload{ObjectSize: 1e30, Objects: 1e30, ReadsPerSec: 1e30, WritesPerSec: 1e30, RF: 99, SindexEntries: 1e30}.Normalize()
 	if w.ObjectSize != MaxObjectSize || w.Objects != MaxObjects || w.ReadsPerSec != MaxRate || w.WritesPerSec != MaxRate || w.RF != MaxRF || w.SindexEntries != MaxSindexEntries {
 		t.Errorf("bounded workload = %+v", w)
+	}
+	// The share of reads that find a record is 1 when absent and stays within [0, 1].
+	for _, c := range []struct {
+		in   *float64
+		want float64
+	}{{nil, 1}, {share(0.37), 0.37}, {share(-1), 0}, {share(0), 0}, {share(1), 1}, {share(5), 1}} {
+		w := Workload{ReadsFound: c.in}.Normalize()
+		if w.ReadsFound == nil || *w.ReadsFound != c.want || w.FoundShare() != c.want {
+			t.Errorf("reads found %v: normalized to %v", c.in, w.ReadsFound)
+		}
+	}
+	// The caller's value is left alone: Normalize works on a copy.
+	if v := 5.0; (Workload{ReadsFound: &v}).Normalize().FoundShare() != 1 || v != 5 {
+		t.Errorf("Normalize changed the caller's share to %v", v)
 	}
 	h := Hypotheses{CacheHit: 2, StorageFill: 0, RAMFill: 3, DefragMult: 0.5, Loss: "all", Compression: 0, SindexSparseness: 0.2, OSReservePct: 2}.Normalize()
 	if h.CacheHit != 1 || h.StorageFill != 0.05 || h.RAMFill != 1 || h.DefragMult != 1 || h.Loss != NodeLoss || h.Compression != 0.05 || h.SindexSparseness != 1 || h.OSReservePct != 0.9 {

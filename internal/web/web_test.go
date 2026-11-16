@@ -72,6 +72,10 @@ func TestPagesAndAssets(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "Aerospike Sizer") || !strings.Contains(body, "/static/app.js?v="+assetsVersion) {
 		t.Errorf("home: status %d", resp.StatusCode)
 	}
+	// The workload form edits the share of reads that find a record, in percent, bounded like the API.
+	if want := `data-path="workload.reads_found" data-scale="100" min="0" max="100"`; !strings.Contains(body, want) {
+		t.Errorf("home: no %s input", want)
+	}
 	for _, path := range []string{"/static/app.js", "/static/app.css"} {
 		if resp, _ := get(t, srv.URL+path); resp.StatusCode != http.StatusOK {
 			t.Errorf("%s: status %d", path, resp.StatusCode)
@@ -105,6 +109,10 @@ func TestDefaults(t *testing.T) {
 	if d.Request.Workload.RF != 2 || len(d.Providers) != 3 || len(d.Request.Auto) != 3 || d.Thresholds["tight"] != sizing.TightLoad || d.PricesAsOf == "" || d.RatesAsOf == "" {
 		t.Errorf("defaults = %+v", d)
 	}
+	// The form opens with every read finding its record; a number, so that the URL can prefill it.
+	if f := d.Request.Workload.ReadsFound; f == nil || *f != 1 {
+		t.Errorf("default share of reads found = %v, want 1", f)
+	}
 	// An offline book looks nothing up: the interface must not claim live prices.
 	if d.Live["aws"] || d.Live["azure"] || d.Live["gcp"] {
 		t.Errorf("live prices = %v on an offline book", d.Live)
@@ -135,6 +143,44 @@ func TestPlanKeepsDefaultsForMissingFields(t *testing.T) {
 	}
 	if r.Generic.Nodes < 3 || r.Generic.Demand.Storage == 0 || len(r.Rows) != 1 || r.Rows[0].Provider != "gcp" || r.Rows[0].Price.Source != pricing.Reference {
 		t.Errorf("plan = %+v", r)
+	}
+}
+
+// workload.reads_found is the share of reads that find a record, a fraction: absent or null it is 1
+// (older callers and links keep their figures), and it is clamped to [0, 1]. Only the device read
+// blocks follow it.
+func TestPlanChargesReadBlocksOnTheReadsFound(t *testing.T) {
+	srv := newTestServer(t)
+	// Wellness's workload as it posted it before the field existed.
+	older := `"object_size":1024,"objects":5e8,"reads_per_sec":200000,"writes_per_sec":40000,"rf":2,"engine":"device","index_on":"ram","sindex_on":"ram"`
+	for _, c := range []struct {
+		workload       string
+		found, readIOP float64
+	}{
+		{``, 1, 260000},
+		{older, 1, 260000},
+		{`"reads_found":null`, 1, 260000},
+		{`"reads_found":1`, 1, 260000},
+		{`"reads_found":0.37`, 0.37, 96200},
+		{older + `,"reads_found":0.37`, 0.37, 96200},
+		{`"reads_found":0`, 0, 0},
+		{`"reads_found":-0.2`, 0, 0},
+		{`"reads_found":1.5`, 1, 260000},
+	} {
+		resp, body := post(t, srv.URL+"/api/plan", "application/json", `{"workload":{`+c.workload+`},"auto":[]}`)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", c.workload, resp.StatusCode, body)
+		}
+		var r plan.Response
+		if err := json.Unmarshal([]byte(body), &r); err != nil {
+			t.Fatal(err)
+		}
+		if r.Workload.ReadsFound == nil || *r.Workload.ReadsFound != c.found || math.Abs(r.Generic.Demand.ReadIOPS-c.readIOP) > 1e-6 || math.Abs(r.Generic.Demand.TPS-312000) > 1e-6 {
+			t.Errorf("%s: reads found %v, read IOPS %v (want %v), %v tx/s", c.workload, r.Workload.ReadsFound, r.Generic.Demand.ReadIOPS, c.readIOP, r.Generic.Demand.TPS)
+		}
+		if !strings.Contains(body, `"reads_found":`) {
+			t.Errorf("%s: the answer does not echo reads_found", c.workload)
+		}
 	}
 }
 

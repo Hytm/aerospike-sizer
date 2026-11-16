@@ -12,6 +12,10 @@ func TestFormats(t *testing.T) {
 		{Count(999), "999"},
 		{Count(-1234567.4), "-1,234,567"},
 		{Pct(0.7), "70%"},
+		{PctTenth(0.37), "37%"},
+		{PctTenth(0.996), "99.6%"},
+		{PctTenth(0.12345), "12.3%"},
+		{PctTenth(0.9999), "100%"},
 	} {
 		if c.got != c.want {
 			t.Errorf("got %q, want %q", c.got, c.want)

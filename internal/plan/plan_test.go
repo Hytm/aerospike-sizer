@@ -111,6 +111,26 @@ func TestNetworkTrafficGrowsWithTheThroughput(t *testing.T) {
 	}
 }
 
+// Reads that find no record still cost CPU and cross the network; only their device blocks go.
+func TestReadsThatFindNothingKeepTheirCPUAndNetwork(t *testing.T) {
+	all := Compute(DefaultRequest(), referenceQuoter{})
+	if all.Workload.ReadsFound == nil || *all.Workload.ReadsFound != 1 {
+		t.Fatalf("default share of reads found = %v, want 1", all.Workload.ReadsFound)
+	}
+	req := DefaultRequest()
+	found := 0.37
+	req.Workload.ReadsFound = &found
+	resp := Compute(req, referenceQuoter{})
+	d, base := resp.Generic.Demand, all.Generic.Demand
+	// 260,000 reads/s at the horizon, 37 % of them on the device: 96,200 read IOPS next to 33,800 of writes.
+	if !near(d.ReadIOPS, 96200, 1e-6) || !near(d.IOPS, 96200+33800, 1e-6) || *resp.Workload.ReadsFound != 0.37 {
+		t.Errorf("read IOPS %v, IOPS %v, share echoed %v", d.ReadIOPS, d.IOPS, *resp.Workload.ReadsFound)
+	}
+	if d.CPU != base.CPU || d.TPS != base.TPS || resp.Network.MonthlyGB != all.Network.MonthlyGB || resp.Generic.Nodes != all.Generic.Nodes {
+		t.Errorf("CPU %v (was %v), traffic %v GB/month (was %v), nodes %d (was %d)", d.CPU, base.CPU, resp.Network.MonthlyGB, all.Network.MonthlyGB, resp.Generic.Nodes, all.Generic.Nodes)
+	}
+}
+
 func TestTightRowGetsAComfortableAlternative(t *testing.T) {
 	req := DefaultRequest()
 	req.Auto = nil

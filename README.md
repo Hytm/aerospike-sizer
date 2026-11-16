@@ -25,9 +25,11 @@ What it computes:
   usage 50 %, RAM 70 % after 10 % for the OS (5 GiB at least), CPU 60 %, headroom for the loss of a node
   or a rack, at least RF+1 nodes, the same number in every rack. Aerospike Wellness sizes with the same
   conventions. Device IO is counted in 4 KiB blocks, the unit of the instances' sustained IOPS: a read
-  fetches the blocks its record spans (no cache serves reads unless a measured cache_read_pct says
-  so), a write the bytes of every copy (records fill 8 MiB write blocks). Records kept in memory
-  (7.0+ write blocks) are planned at the device fill, the indexes at the RAM fill.
+  that finds its record fetches the blocks the record spans (no cache serves reads unless a measured
+  cache_read_pct says so), one that finds nothing stops at the primary index and reads no block (the
+  share of reads that find a record is a workload input, 100 % by default; every read still costs
+  CPU and network), a write the bytes of every copy (records fill 8 MiB write blocks). Records kept
+  in memory (7.0+ write blocks) are planned at the device fill, the indexes at the RAM fill.
   All-flash sizing follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks,
   10 B of RAM per sprig); secondary indexes count 14 B per entry at 1.5 sparseness.
 - **Replication traffic** across AZs (rack-awareness, Active Rack, Local read, client placement) or

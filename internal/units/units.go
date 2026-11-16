@@ -45,3 +45,9 @@ func Count(n float64) string {
 
 // Pct formats a share as a whole percentage: 0.7 → "70%".
 func Pct(share float64) string { return fmt.Sprintf("%.0f%%", share*100) }
+
+// PctTenth formats a measured share to the tenth of a point, without a trailing ".0": 0.996 →
+// "99.6%", where Pct would round it to "100%".
+func PctTenth(share float64) string {
+	return strings.TrimSuffix(fmt.Sprintf("%.1f", share*100), ".0") + "%"
+}

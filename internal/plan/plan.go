@@ -58,14 +58,17 @@ type Request struct {
 	Auto       []string          `json:"auto"` // providers whose recommended configuration is listed
 }
 
-// DefaultRequest is the form as the interface opens.
+// DefaultRequest is the form as the interface opens. Every read finds its record: the share is a
+// number rather than absent so that the form shows it and the URL can prefill it; a request that
+// leaves it out keeps it.
 func DefaultRequest() Request {
 	auto := make([]string, 0, len(catalog.Providers))
 	for _, p := range catalog.Providers {
 		auto = append(auto, p.Key)
 	}
+	found := 1.0
 	return Request{
-		Workload:   sizing.Workload{ObjectSize: 1024, Objects: 500e6, ReadsPerSec: 200000, WritesPerSec: 40000, RF: 2, Engine: sizing.Device, IndexOn: sizing.InRAM, SindexOn: sizing.InRAM},
+		Workload:   sizing.Workload{ObjectSize: 1024, Objects: 500e6, ReadsPerSec: 200000, ReadsFound: &found, WritesPerSec: 40000, RF: 2, Engine: sizing.Device, IndexOn: sizing.InRAM, SindexOn: sizing.InRAM},
 		Node:       Node{VCPU: 16, RAMGiB: 128, StorageTB: 3.75, IOPS: 200000},
 		Hypotheses: sizing.DefaultHypotheses(),
 		Network:    network.DefaultSettings(),

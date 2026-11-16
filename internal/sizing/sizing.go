@@ -29,9 +29,13 @@ const (
 
 // Workload is what the cluster must hold and serve.
 type Workload struct {
-	ObjectSize   float64   `json:"object_size"` // average record size as stored, bytes
-	Objects      float64   `json:"objects"`     // master records
-	ReadsPerSec  float64   `json:"reads_per_sec"`
+	ObjectSize  float64 `json:"object_size"` // average record size as stored, bytes
+	Objects     float64 `json:"objects"`     // master records
+	ReadsPerSec float64 `json:"reads_per_sec"`
+	// ReadsFound is the share of the reads that find a record, 0 to 1; nil (absent) means all of
+	// them, so that callers written before it keep their figures. A read that finds nothing is
+	// answered from the primary index: it costs CPU and network like any read, no record block.
+	ReadsFound   *float64  `json:"reads_found"`
 	WritesPerSec float64   `json:"writes_per_sec"`
 	RF           int       `json:"rf"`
 	Engine       Engine    `json:"engine"`
@@ -73,7 +77,18 @@ func (w Workload) Normalize() Workload {
 		w.SindexOn = InRAM
 	}
 	w.SindexEntries = clamp(w.SindexEntries, 0, MaxSindexEntries)
+	// A fresh value: the caller's own is left alone, and the answer says which share was used.
+	found := w.FoundShare()
+	w.ReadsFound = &found
 	return w
+}
+
+// FoundShare returns the share of the reads that find a record, within [0, 1]: 1 when not given.
+func (w Workload) FoundShare() float64 {
+	if w.ReadsFound == nil {
+		return 1
+	}
+	return clamp(*w.ReadsFound, 0, 1)
 }
 
 func clamp(v, lo, hi float64) float64 { return min(max(v, lo), hi) }
@@ -295,7 +310,7 @@ type Detail struct {
 	SetIndex float64 `json:"set_index"` // set indexes
 	DataRAM  float64 `json:"data_ram"`  // records in memory
 	// IOPS parts, in 4 KiB blocks.
-	ReadIOPS      float64 `json:"read_iops"`       // record reads reaching the device
+	ReadIOPS      float64 `json:"read_iops"`       // reads that find a record and reach the device
 	WriteIOPS     float64 `json:"write_iops"`      // bytes of the record writes, defragmentation included
 	IndexIOPS     float64 `json:"index_iops"`      // flash index blocks read and written
 	BlocksPerRead float64 `json:"blocks_per_read"` // device blocks one record read fetches
@@ -324,9 +339,11 @@ func Detailed(w Workload, h Hypotheses) Detail {
 		d.WriteIOPS = w.WritesPerSec * float64(w.RF) * stored * h.DefragMult / DeviceBlockBytes
 	}
 	if w.Engine == Device {
-		// A read fetches the 4 KiB blocks its record spans.
+		// A read that finds its record fetches the 4 KiB blocks the record spans, unless a cache
+		// serves it (the cache share is measured over the reads that reach the storage); one that
+		// finds nothing stops at the primary index.
 		d.BlocksPerRead = max(math.Ceil(stored/DeviceBlockBytes), 1)
-		d.ReadIOPS = w.ReadsPerSec * (1 - h.CacheHit) * d.BlocksPerRead
+		d.ReadIOPS = w.ReadsPerSec * w.FoundShare() * (1 - h.CacheHit) * d.BlocksPerRead
 	}
 	if w.IndexOn == OnFlash {
 		d.SprigsPerPartition = sprigsPerPartition(objects, h.SprigFill)

@@ -50,6 +50,7 @@
   function count(n) { return Math.round(n).toLocaleString("en-US"); }
   function usd(n) { return "$" + Math.round(n).toLocaleString("en-US"); }
   function pct(f) { return Math.round(f * 100) + "%"; }
+  function pctTenth(f) { return (f * 100).toFixed(1).replace(/\.0$/, "") + "%"; } // a measured share: 99.6%, not 100%
   function amount(key, v) {
     return key === "storage" ? si(v) : key === "ram" ? iec(v) : key === "cpu" ? v.toFixed(1) + " vCPU" : count(v);
   }
@@ -280,6 +281,7 @@
       var parts = [partsText(res.key, d)];
       if (res.key === "storage" && d.flash_index > 0) parts.push("partition-tree-sprigs " + d.sprigs_per_partition);
       if (res.key === "iops" && d.blocks_per_read > 1) parts.push(d.blocks_per_read + " blocks of 4 KiB per read");
+      if (res.key === "iops" && w.engine === "device" && w.reads_per_sec > 0 && w.reads_found < 1) parts.push(pctTenth(w.reads_found) + " of the reads find a record (the others read no block)");
       parts = parts.filter(Boolean).join(" · ");
       var needed = need === undefined ? "no node count works" : need + " node" + (need === 1 ? "" : "s") + " needed";
       return '<div class="kpi"><div class="l">' + titles[res.key] + '</div><div class="v">' + amount(res.key, demand) + "</div>" +

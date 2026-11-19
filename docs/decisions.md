@@ -70,8 +70,13 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   avec la pénalité de wellness sur les grands nombres de nœuds. Une configuration tight ou insuffisante
   reçoit une alternative confortable à nombre de nœuds égal quand un autre gabarit résout le problème
   (pas pour un problème de topologie). (amendé le 2026-11-19, T19 : recommandation et alternative sont
-  prises parmi les types que la région de la ligne propose.) Les alternatives sont recalculées à
-  chaque requête : elles ne s'accumulent plus pendant la saisie comme dans l'ancienne page.
+  prises parmi les types que la région de la ligne propose.) (amendé le 2026-11-19, T21 : la
+  recommandation est la configuration confortable de plus petit score, prix de référence US East de
+  la base choisie, à la demande par défaut ou engagement d'un an, × nœuds × (1 + nœuds ÷ 50), parmi
+  les types de sa région, à égalité le moins de nœuds puis le nom, la règle de wellness ;
+  l'alternative est le type confortable le moins cher sur la même base.) Les alternatives sont
+  recalculées à chaque requête : elles ne s'accumulent plus pendant la saisie comme dans l'ancienne
+  page.
 
 ## T6 — Prix live côté serveur
 
@@ -87,7 +92,9 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   n'ayant ni i7ie ni i8g dans plusieurs des régions du sizer.)
 - Prix de référence : ceux du catalogue de wellness (US East, relevés le 2026-10-21), affichés comme tels
   (amendé le 2026-11-19, T19 : tous relus le 2026-11-19, identiques dans les deux catalogues).
-  `SIZER_OFFLINE=1` coupe les recherches live.
+  `SIZER_OFFLINE=1` coupe les recherches live. (amendé le 2026-11-19, T21 : les recherches live ne
+  portent que sur les prix à la demande ; le prix d'un engagement d'un an reste le prix de référence
+  US East, quelle que soit la région.)
 
 ## T7 — Trafic réseau
 
@@ -263,7 +270,9 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
     passée à `Size`) au lieu d'une recherche bornée à 64 pas qui rendait une configuration « tight »
     au-delà de quelques centaines de nœuds ; « confortable » veut dire partout « toute charge sous
     85 % » (le seuil de 80 % propre aux alternatives disparaît) ; un gabarit dont une ressource est
-    inutilisable (RAM entièrement réservée à l'OS) n'est plus proposé comme alternative, le suivant l'est.
+    inutilisable (RAM entièrement réservée à l'OS) n'est plus proposé comme alternative, le suivant l'est
+    (amendé le 2026-11-19, T21 : les égalités de score vont au moins de nœuds, puis au nom, quel que
+    soit l'ordre du catalogue ; le score prend le prix de la base choisie).
 - **Réseau** (`internal/network`) :
   - Azure ne facture plus le trafic entre zones de disponibilité depuis mai 2024 (Microsoft Learn,
     « Availability zones overview », section Inter-zone networking) : taux par défaut 0 ; sur
@@ -651,7 +660,9 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   à la plus chère, et garde le type choisi quand la nouvelle région le propose ; la ligne d'une
   configuration et l'option d'un type Arm (AWS Graviton, Google Axion) finissent par « arm64 ».
 - **Ordre du catalogue** : prix de référence, puis nom à prix égal (i4i.24xlarge avant i8g.24xlarge,
-  toutes deux à 8,2368 $/h), pour une recommandation stable.
+  toutes deux à 8,2368 $/h), pour une recommandation stable (amendé le 2026-11-19, T21 : la
+  recommandation et l'alternative ne dépendent plus de cet ordre, une égalité allant au moins de
+  nœuds puis au nom).
 - **Prix live AWS** : les fichiers publics des pages de tarifs d'AWS
   (`b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/<lieu>/Linux/index.json`,
   un par région, tous les types qu'elle propose, Linux à la demande) remplacent ec2.shop (choix de
@@ -667,8 +678,9 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   requête ne change pas. wellness n'envoie aucune ligne et ne reçoit donc jamais la note d'un type non
   proposé ; il lit désormais `instance.arch` (vide avec un sizer plus ancien). La région des lignes
   automatiques quand wellness appelle le sizer reste la région par défaut de chaque fournisseur (choix de
-  l'utilisateur : un tour suivant aligne la règle de recommandation). Déployer le sizer d'abord, puis
-  wellness ; les deux ordres sont sûrs.
+  l'utilisateur : un tour suivant aligne la règle de recommandation) (amendé le 2026-11-19, T21 :
+  wellness envoie dans `pricing` la base d'un engagement d'un an et ses régions US East). Déployer le
+  sizer d'abord, puis wellness ; les deux ordres sont sûrs.
 - Effet sur l'exemple par défaut (prix de référence, calcul seul) : AWS i8g.xlarge × 12 (3 006 $/mois)
   au lieu de i4i.xlarge × 15 (3 756) ; Google c3-standard-22-lssd × 3 (2 788) au lieu de
   c4a-highmem-4-lssd × 12 (2 605 : la pénalité par nœud préfère 3 nœuds) ; Azure L8as_v3 × 9 (4 100) au
@@ -754,3 +766,126 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   wellness rejoint le nombre de nœuds du sizer (+27 % chez wellness). Compatibilité : aucun champ ajouté,
   retiré ou renommé à la requête, à la réponse ou au pré-remplissage ; les deux ordres de déploiement sont
   sûrs.
+
+## T21 — Règle de choix de la machine commune avec wellness : base de prix et régions transmises
+
+- Demande de l'utilisateur (2026-11-19, revue croisée des deux outils ; décision T49 de wellness) : pour
+  les mêmes besoins, la comparaison de machines de wellness, les données de sa synthèse Claude et les
+  lignes recommandées du sizer (que le panneau du sizer de wellness affiche aussi) nomment le même type
+  et le même nombre de nœuds.
+- **Écarts relevés le 2026-11-19** (sur les prototypes de T18 et T19, avant T20) :
+  - base de prix : wellness classait au prix d'un engagement d'un an, le sizer au prix de référence à
+    la demande, jamais au prix live qu'il affiche ; tous deux en US East (`PricesRegion`) ;
+  - région : celle des lignes automatiques du sizer (eu-west-3, europe-west1, francecentral) ne servait
+    qu'à filtrer les types proposés (T19) et à chercher le prix affiché ; eu-west-3 n'a pas de r6id, que
+    wellness choisissait pour 180 des 294 recommandations AWS, et im4gn ou i8g.48xlarge manquent dans
+    quelques régions ; wellness ne filtrait rien, US East proposant les 87 types ;
+  - marge : le sizer prend le nombre de nœuds confortable (chaque charge au plus 85 %), sinon celui qui
+    tient ; wellness prenait celui qui tient ;
+  - pénalité par nœud : le sizer note prix × nœuds × (1 + nœuds ÷ 50) sur tous les types du
+    fournisseur ; wellness ne s'en servait que pour choisir la taille dans une famille, puis classait
+    les familles au coût brut ;
+  - plafond : wellness écartait toute option au-delà de 256 nœuds, le sizer va jusqu'à `MaxNodes`
+    (10 000) ;
+  - égalités : chaque outil gardait le premier type dans l'ordre de son fichier, et les deux ordres
+    diffèrent (i4i.24xlarge et i8g.24xlarge, toutes deux à 8,2368 $/h à la demande) ;
+  - déjà communs : plancher RF + 1, AZ = racks, rack-aware au-delà d'un rack, arrondi aux racks.
+  - Mesure sur les 294 clusters réels des analyses de wellness (les requêtes qu'il envoie, prix de
+    référence) : même type AWS 28, Google 98, Azure 216 ; même type et nombre de nœuds 1, 7, 85 ; aucun
+    cluster identique sur les trois fournisseurs ; la première option de la synthèse Claude égale la
+    ligne du sizer pour 8.
+- **Choix de l'utilisateur** :
+  - marge : le nombre confortable partout, celui qui tient seulement quand aucun type du fournisseur
+    n'est confortable ;
+  - wellness compte de même le matériel actuel et les machines choisies de sa comparaison (sa T49) ;
+  - wellness transmet sa base et ses régions (`pricing`, ci-dessous) ;
+  - le sizer seul ouvre au prix à la demande dans ses régions par défaut, avec un sélecteur de base et
+    de régions ; les trois options de la synthèse Claude de wellness gardent leur forme ;
+  - pas de prix 1 an live dans ce tour.
+- **La règle** (`sizing.Recommend`, que wellness applique de même) :
+  - candidats : les types du fournisseur proposés dans la région de la ligne ;
+  - nombre de nœuds de chaque type : le nombre confortable (`comfortableNodes` : `Size` sur la demande
+    ÷ 0,85, au moins un nœud par AZ, puis `Evaluate` OK, c'est-à-dire chaque charge au plus 85 % de la
+    capacité utilisable des nœuds restants après la perte planifiée et les règles de topologie
+    respectées, avec au plus deux essais de max(racks, 1) nœuds de plus, sans dépasser `MaxNodes`) ;
+    quand aucun type du fournisseur n'est confortable, le nombre qui tient (`Size`) ;
+  - score : taux horaire de référence de la base × nœuds × (1 + nœuds ÷ 50), calculé à partir du taux
+    horaire (`rate * float64(nodes) * (1 + float64(nodes)/50)`), dans les deux outils, pour que les
+    égalités de flottants soient les mêmes ; le plus petit gagne ;
+  - égalités : le moins de nœuds, puis le nom (ordre des octets), quel que soit l'ordre des fichiers ;
+  - les prix live ne classent jamais ;
+  - l'alternative confortable d'une ligne tight ou insuffisante (T5) est le type confortable au plus
+    petit taux de la base, à égalité le nom.
+- **Base de prix et régions** : la requête de `POST /api/plan` prend un objet `pricing` facultatif.
+  - `basis` : `on_demand` (défaut) ou `commitment_1y`. `regions` : `{aws, gcp, azure}` → la région de
+    la ligne recommandée du fournisseur ; une clé absente garde sa région par défaut, la requête se
+    décodant dans `DefaultRequest` (dont la table des régions est neuve à chaque appel : une requête ne
+    déteint pas sur la suivante).
+  - Une base ou une région inconnue retombe sur `on_demand` ou sur la région par défaut, avec une note
+    en tête de `notes` (« Unknown pricing basis "reserved": on-demand prices used. », « AWS: unknown
+    region "mars-1" for the recommendation, eu-west-3 · Paris used instead. ») : des replis
+    d'énumérations, pas des bornes (`clamps`, T18). En anglais comme les autres textes qui atteignent
+    wellness ; le tour des textes leur donnera un code.
+  - Les configurations ajoutées gardent leur région ; la base chiffre toutes les lignes, alternatives
+    comprises.
+  - Le prix d'un engagement d'un an est un prix de référence US East, sans recherche live, quelle que
+    soit la région de la ligne : `price.source` `reference`, jamais `pending`. Ce sont les taux du
+    catalogue de wellness (`reserved_1y_hour`, ses décisions T23 et T47, relus le 2026-11-19 ; remise
+    de 31,9 à 37,2 % sur AWS, 34,0 à 37,0 % sur Google, 36,0 % sur Azure), aux conditions de
+    `PricesTerms` : AWS Standard Reserved Instance 1 an sans avance, ou EC2 Instance Savings Plan 1 an
+    sans avance pour les i7ie et i8g, qui n'ont pas d'instance réservée (`reserved_via`
+    `savings-plan`) ; Azure Reserved VM Instance 1 an ; Google CUD fondé sur les ressources, 1 an (les
+    C4A avec leur Titanium SSD engagé, comme le suppose wellness). Le test de parité (T19) compare
+    désormais `reserved_1y_hour` et `reserved_via`, et le test du catalogue vérifie une remise de 20 à
+    50 %, comme celui de wellness.
+  - Réponse : `pricing` normalisé ; `rows[].price.basis` (`on_demand` ou `commitment_1y`),
+    alternatives comprises ; tout objet d'instance gagne `reserved_1y_hour` et `reserved_via` ;
+    `/api/defaults` gagne `prices_terms` et `request.pricing`. Pré-remplissage par l'URL (T10) :
+    `pricing.basis`, `pricing.regions.aws`, `pricing.regions.gcp`, `pricing.regions.azure`.
+  - wellness envoie toujours `pricing` = `{commitment_1y, us-east-1, us-east1, eastus}` (sa T49) : son
+    panneau montre alors les types et nombres de nœuds de sa comparaison de machines, aux prix 1 an de
+    référence. La région compte autant que la base : r6id n'étant pas proposé à Paris, la base seule
+    ne donne le même type AWS que pour 97 clusters sur 294.
+- **Interface** : au-dessus de la comparaison, un sélecteur « Prices » (On demand, 1-year commitment)
+  et une région de recommandation par fournisseur. Un prix 1 an porte « reference · 1 year », avec ses
+  conditions en infobulle et sans bouton ↻ ; la note des prix suit la base ; le texte de la comparaison
+  et le badge « recommended » disent la règle.
+- **Constantes tenues des deux côtés** : seuil 0,85, pénalité de 50 nœuds, ordre des égalités (score,
+  nœuds, nom), taux 1 an (test de parité), et six vecteurs synthétiques : les requêtes que wellness
+  construit de ses besoins (`internal/plan/testdata/wellness-requests.jsonl`,
+  `TestWellnessRequestsGetWellnessPicks`) et la même table chez wellness, que ses tests tirent de ses
+  propres besoins. Un changement de prix ou de forme du catalogue déplace les deux tables ensemble.
+  - device-storage : AWS 9 × i4i.2xlarge, Google 18 × c3-standard-8-lssd, Azure 9 × L8as_v3 ;
+  - memory-ram : 14 × r6id.4xlarge, 8 × c4a-highmem-32-lssd, 14 × L16as_v3 ;
+  - cpu-3-racks : 6 × i8g.16xlarge, 15 × c3-standard-22-lssd, 12 × L32as_v3 ;
+  - rf3-rack-loss : 15 × i8g.2xlarge, 6 × z3-highmem-16-highlssd, 9 × L16as_v3 ;
+  - floor : 3 × r6id.large, 3 × c3-standard-4-lssd, 3 × L8as_v3 ;
+  - huge : 52 × i7ie.48xlarge, 160 × z3-highmem-88-highlssd, 320 × L80as_v3.
+  - Toutes confortables. Avant : wellness n'avait aucune option Azure pour « huge » (plafond de 256
+    nœuds) et donnait 18 × i8g.4xlarge pour « cpu-3-racks », où le sizer donnait 6 × i8g.16xlarge.
+- La liste « Dimensionnement partagé » des deux `CLAUDE.md` gagne la ligne du choix de la machine
+  (sizer T5, T21 ; wellness T23, T49).
+- **Effets** :
+  - exemple par défaut inchangé (i8g.xlarge × 12, c3-standard-22-lssd × 3, L8as_v3 × 9) ; à la base 1 an,
+    les mêmes types coûtent 1 949, 1 757 et 2 623 $/mois de calcul ;
+  - les 294 requêtes réelles envoyées sans `pricing` donnent les mêmes 882 lignes qu'avant (type et
+    nombre de nœuds, rejouées avant et après ce changement) ;
+  - avec la base et les régions de wellness : même type AWS 272, Google 276, Azure 288 ; même type et
+    nombre de nœuds 258, 249, 264 ; 247 clusters identiques sur les trois fournisseurs ; la première
+    option de la synthèse Claude égale la ligne du sizer pour 258. Quand le choix est le même (771
+    lignes), le coût mensuel 1 an de wellness égale le calcul du sizer au centime ;
+  - les 47 clusters qui différaient encore avaient, à la mesure, une demande différente dans les deux
+    outils : index primaire sur flash (24, mesurés avant T20, qui aligne depuis l'index sur flash, et
+    non remesurés), entrées d'index secondaire approchées (8), namespaces de RF différents (10),
+    namespaces device et mémoire dimensionnés comme un seul moteur (5) ;
+  - côté wellness (sa T49), les recommandations coûtent 17 à 19,5 % de plus en 1 an, surtout par la
+    marge de 85 %, et son panneau affiche les prix 1 an de référence US East au lieu des prix live.
+- **Limites** : le classement reste sur les prix de référence US East ; à la demande dans une autre
+  région, un prix live peut faire différer le badge « lowest cost » de la recommandation, comme avant.
+  Les taux 1 an vieillissent entre deux relevés : le test de parité ne voit que l'écart entre les deux
+  outils, pas avec les fournisseurs. Une lecture live des prix 1 an (fichiers de prix RI et Savings
+  Plans d'AWS par région, réservations d'Azure) servirait à l'affichage seul, le classement restant sur
+  la référence.
+- Compatibilité : changement additif. Un sizer plus ancien ignore `pricing` (champ inconnu) et donne
+  ses choix d'avant ; un wellness plus ancien n'envoie pas `pricing` et reçoit les défauts ; aucun champ
+  ne change de sens. Déployer le sizer d'abord, puis wellness dans la même fenêtre.

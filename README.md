@@ -41,15 +41,20 @@ What it computes:
 - **Replication traffic** across AZs (rack-awareness, Active Rack, Local read, client placement) or
   across regions with XDR, and its monthly cost per provider: cross-AZ rates (AWS both directions,
   Google Cloud egress only, Azure free since 2024) or inter-region rates, editable.
-- **Cost comparison**: each provider's cheapest comfortable configuration among the instance types its
-  region offers, plus the ones you add, with live on-demand prices for AWS (AWS price list) and Azure
-  (Retail Prices API) in the chosen region and reference prices otherwise. The catalog holds the same
-  instance types and figures as Aerospike Wellness's: AWS i4i, i7ie, i8g, i3en, r6id and im4gn; Google
-  Cloud C4A, C3 and Z3; Azure Lsv3 and Lasv3. The Arm types (i8g, im4gn, C4A) are marked arm64.
+- **Cost comparison**: each provider's recommended configuration, plus the ones you add. The
+  recommendation is the instance type its region offers with the lowest reference price on the chosen
+  basis (on demand, or a 1-year commitment) plus 2 % per node, at the node count that keeps every load
+  under 85 %; ties go to fewer nodes, then to the name. It is the rule Aerospike Wellness applies too,
+  and Wellness asks for the 1-year commitment in US East. On demand, AWS (AWS price list) and Azure
+  (Retail Prices API) prices are read live in the chosen region, reference prices otherwise; 1-year
+  commitment prices are the US East reference. The catalog holds the same instance types and figures
+  as Aerospike Wellness's: AWS i4i, i7ie, i8g, i3en, r6id and im4gn; Google Cloud C4A, C3 and Z3; Azure
+  Lsv3 and Lasv3. The Arm types (i8g, im4gn, C4A) are marked arm64.
 
 The form can be prefilled from the URL, one parameter per field named as in the API
-(`/?workload.objects=4e9&workload.index_on=flash&hypotheses.growth=0.2`); Aerospike Wellness links here
-that way with the parameters of an analysed cluster.
+(`/?workload.objects=4e9&workload.index_on=flash&hypotheses.growth=0.2`, or
+`pricing.basis=commitment_1y` and `pricing.regions.<provider>=<region>` for the comparison); Aerospike
+Wellness links here that way with the parameters of an analysed cluster.
 
 The API serves the loopback names and the configured listen address only. Every result is an estimate:
 the assumptions behind it are shown and editable in the interface. An input outside its bounds is sized

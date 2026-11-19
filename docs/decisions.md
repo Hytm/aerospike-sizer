@@ -62,7 +62,8 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   fournisseurs la publient) ; l'ancienne page affichait en binaire des saisies décimales.
 - Usage affiché : part de la capacité brute (RAM hors réserve OS) avec le plafond sous chaque jauge.
   Statut d'une configuration : charge rapportée à la capacité utilisable des nœuds restants après la
-  perte d'un nœud ; au-delà de 100 % « insufficient », au-delà de 85 % « tight ».
+  perte d'un nœud ; au-delà de 100 % « insufficient », au-delà de 85 % « tight » (à 10⁻¹² près, amendé
+  le 2026-11-19, T18).
 - Recommandation par fournisseur : la configuration confortable (tout sous 85 %) la moins chère aux prix
   de référence, en ajoutant des nœuds à un gabarit tant que c'est moins cher qu'un gabarit plus grand,
   avec la pénalité de wellness sur les grands nombres de nœuds. Une configuration tight ou insuffisante
@@ -112,12 +113,13 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   capacity planning » (aerospike.com/docs/database/manage/planning/capacity/secondary-indexes) ; les
   exemples chiffrés du guide sont des tests (`internal/sizing/sizing_test.go`).
 - **Index primaire** : 64 B par copie en RAM. **All-flash** (`index-type flash`) : un sprig est un bloc
-  de 4 KiB de 64 entrées ; `partition-tree-sprigs` = enregistrements ÷ (64 × remplissage) ÷ 4096,
-  arrondi à la puissance de deux supérieure ; espace flash = 4096 partitions × RF × sprigs × 4 KiB,
-  plus 5 B par sprig (racines écrites à l'arrêt) ; 10 B de RAM par sprig (13 avant 5.7). Remplissage
-  50 % par défaut, comme l'exemple du guide (4 milliards d'enregistrements RF2 → 32 768 sprigs par
-  partition, 1 TiB sur flash, 2,5 GiB de RAM). L'IO de l'index flash est une estimation du sizer, pas
-  du guide : une lecture de bloc par lecture, une lecture et une écriture par copie écrite.
+  de 4 KiB de 64 entrées ; `partition-tree-sprigs` = enregistrements ÷ (64 × remplissage) ÷ 4096, arrondi
+  à la puissance de deux supérieure (le quotient arrondi par excès à 10⁻¹² près, amendé le 2026-11-19,
+  T18) ; espace flash = 4096 partitions × RF × sprigs × 4 KiB, plus 5 B par sprig (racines écrites à
+  l'arrêt) ; 10 B de RAM par sprig (13 avant 5.7). Remplissage 50 % par défaut, comme l'exemple du guide
+  (4 milliards d'enregistrements RF2 → 32 768 sprigs par partition, 1 TiB sur flash, 2,5 GiB de RAM).
+  L'IO de l'index flash est une estimation du sizer, pas du guide : une lecture de bloc par lecture, une
+  lecture et une écriture par copie écrite.
 - **Index secondaires** (6.0+) : 14 B par entrée (8 de valeur ou de hachage, 6 de référence) ×
   sparseness 1,5 en moyenne (2 au pire) × RF ; une entrée par bin scalaire indexé, une par élément
   distinct d'une liste ou d'une map ; saisie en « entrées par enregistrement, tous index confondus ».
@@ -145,8 +147,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 
 - `GET /?<chemin>=<valeur>…` : un paramètre par champ, nommé comme dans l'API (`workload.objects`,
   `workload.index_on`, `hypotheses.growth`, `network.azs`, `node.ram_gib`…) ; `source` nomme l'origine
-  affichée, `back` (URL locale seulement) ramène à la page d'origine. C'est ainsi que Wellness renvoie
-  au sizer avec les paramètres d'un cluster (décision T29 de Wellness).
+  affichée, `back` (URL locale seulement) ramène à la page d'origine (amendé le 2026-11-19, T18 : le
+  serveur la vérifie et accepte toute adresse loopback, 127.0.0.0/8, ::1 ou localhost ; sinon la page dit
+  qu'il n'y a pas de lien retour). C'est ainsi que Wellness renvoie au sizer avec les paramètres d'un
+  cluster (décision T29 de Wellness).
 
 ## T11 — Croissance aussi sur le débit, plancher RF+1 et réserve OS partagés avec wellness
 
@@ -180,8 +184,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   et surestimait l'écriture des petits (300 o × RF2 : moins d'un dixième de bloc, compté 2).
 - L'unité est le bloc de 4 Kio, celle des IOPS soutenues du catalogue (lectures aléatoires de 4 Kio).
   Taille stockée d'une copie = (taille + surcoût) × compression.
-  - **Lecture** : ⌈taille stockée ÷ 4 Kio⌉ blocs (`blocks_per_read`), × (1 − cache) (amendé le
-    2026-11-16, T17 : sur les seules lectures qui trouvent un enregistrement).
+  - **Lecture** : ⌈taille stockée ÷ 4 Kio⌉ blocs (à 10⁻¹² près, amendé le 2026-11-19, T18)
+    (`blocks_per_read`), × (1 − cache) (amendé le 2026-11-16, T17 : sur les seules lectures qui trouvent
+    un enregistrement ; amendé le 2026-11-19, T18 : aucun bloc sans enregistrement ou avec des
+    enregistrements de 0 octet).
   - **Écriture** : les enregistrements remplissent des blocs d'écriture de 8 Mio, le disque écrit leurs
     octets : écritures × RF × taille stockée ÷ 4 Kio × défragmentation.
   - Index flash inchangé (des blocs de 4 Kio déjà).
@@ -229,7 +235,9 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 - **Modèle** (`internal/sizing`) :
   - bornes hautes documentées sur toutes les entrées (taille ≤ 8 Mio, soit le bloc d'écriture ;
     enregistrements ≤ 10¹⁵ ; débit ≤ 10⁹/s ; nœud générique borné de même) : plus de +Inf ni de NaN, et
-    une réponse non encodable répond désormais 500 au lieu d'un 200 vide ;
+    une réponse non encodable répond désormais 500 au lieu d'un 200 vide (amendé le 2026-11-19, T18 :
+    chaque borne appliquée est dite dans `clamps` de la réponse et sur la page ; entrées d'index
+    secondaire bornées à 10⁹ par enregistrement au lieu de 10⁴) ;
   - `partition-tree-sprigs` reste dans sa plage de configuration (référence : défaut et minimum 256,
     maximum 256M, puissance de deux ; au-delà de 32K, consulter le support Aerospike, ce que
     l'explication dit) : le sizer plafonnait à 65 536 et descendait jusqu'à 1 sprig, et son arrondi
@@ -281,7 +289,9 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 - **Interface** : une valeur hors boutons (RF 4 à 8, AZ 4 à 12, régions 5 à 8, préremplie par l'URL)
   reçoit un bouton synthétisé ; entiers préremplis arrondis ; lettres d'AZ jusqu'à l ; « no node count
   works » à la place de « undefined nodes needed » ; bandeau des prix et bouton ↻ fidèles au serveur ;
-  saisie bornée aux limites des champs ; accessibilité des segments (`aria-pressed`, nom de groupe).
+  saisie bornée aux limites des champs (amendé le 2026-11-19, T18 : les plafonds vont de 5 à 100 %,
+  comme le serveur, et un test vérifie que chaque borne du formulaire est celle du serveur) ;
+  accessibilité des segments (`aria-pressed`, nom de groupe).
 - **Choix laissés à l'utilisateur** (non modifiés) : cache de lecture à 70 % par défaut (Aerospike n'a
   pas de cache de lecture par défaut ; valeur héritée du sizer d'origine et partagée avec wellness) ;
   moteur mémoire : données planifiées à 70 % de la RAM alors que 7.0+ les gère en blocs d'écriture
@@ -339,7 +349,8 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   jusqu'à 94 % : leurs IOPS de lecture étaient surestimées jusqu'à environ 16 fois.
 - Convention partagée avec wellness (T11) : toutes les lectures comptent pour le CPU et le trafic réseau,
   comme avant ; les blocs de lecture disque ne portent que sur les lectures qui trouvent un
-  enregistrement : lectures × part trouvée × (1 − cache) × ⌈taille stockée ÷ 4 Kio⌉. Le cache
+  enregistrement : lectures × part trouvée × (1 − cache) × ⌈taille stockée ÷ 4 Kio⌉ (amendé le
+  2026-11-19, T18 : et seulement quand le disque porte des enregistrements d'au moins un octet). Le cache
   (`cache_read_pct` mesuré, T16) se rapporte aux lectures qui atteignent le stockage, donc aux lectures
   trouvées : les deux parts se multiplient. L'IO de l'index sur flash (T9) reste d'un bloc par lecture,
   trouvée ou non : une lecture sans enregistrement cherche quand même son entrée.
@@ -359,4 +370,106 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   changement de code ici : le sizer dimensionne les copies qu'on lui donne (RF borné à 8, plancher RF + 1
   nœuds). Au-delà de 8 copies stockées (`replication-factor 99` sur 9 nœuds ou plus), wellness les
   transmet toutes et les dimensionne toutes ; le sizer en planifie 8, donc moins de nœuds, et une note
-  d'avertissement de wellness le dit (ses décisions T29 et T31).
+  d'avertissement de wellness le dit (ses décisions T29 et T31) (amendé le 2026-11-19, T18 : le sizer le
+  dit aussi, dans `clamps` et sur sa page).
+
+## T18 — Parité avec wellness : écarts relevés le 2026-11-19
+
+Revue croisée des deux outils (2026-11-19), choix de l'utilisateur du même jour : chaque groupe d'écarts
+a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
+
+### Bornes jamais silencieuses, lectures sans octets d'enregistrement, retour vers wellness depuis toute adresse loopback
+
+- **Bornes dites.** Chaque nombre que la normalisation ramène dans ses bornes (charge, nœud générique,
+  hypothèses, réseau) revient dans `clamps` de `POST /api/plan` : `{field, given, used, note}`, où
+  `field` est son chemin dans la requête (`workload.object_size`, `node.vcpu`, `hypotheses.growth`,
+  `network.azs`, `network.rates.aws`…), `given` la valeur envoyée, `used` celle retenue et `note` une
+  phrase en anglais pour la page. La liste est toujours présente, vide quand rien n'est borné, dans
+  l'ordre charge, nœud, hypothèses, réseau ; `notes` garde son sens (les notes de bornes n'y sont pas
+  ajoutées). Le mécanisme est unique (`sizing.Bounds`, `Bounded()` de chaque partie, dont `Normalize`
+  est l'enveloppe) : toute borne nouvelle y passe.
+  - Textes : propres aux bornes du modèle, qui disent ce que l'estimation laisse de côté — taille
+    au-delà de 8 Mio (le plus grand enregistrement qu'Aerospike stocke : octets d'enregistrements et IO
+    disque N fois moindres ; des enregistrements fusionnés de 93,94 Mio sont dimensionnés à 8 Mio,
+    11,7 fois moins), RF au-delà de 8 (moins de copies, plancher de 9 nœuds au lieu de 11 pour un RF 10),
+    entrées d'index secondaire au-delà de 10⁹ ; générique ailleurs (« Storage fill 1% is below 5%, the
+    least the sizer accepts: sized with 5%. »), avec le libellé du champ sur la page.
+  - Ne sont pas des bornes : les replis d'énumérations (moteur, placement d'index, perte, mode), les
+    options que leurs prérequis excluent, une part de lectures trouvées absente (toutes les lectures),
+    et le nombre de nœuds d'une ligne (le tableau montre celui retenu).
+  - La page affiche les notes sous l'avis de pré-remplissage. Un RF au-delà de 8 prérempli par l'URL
+    garde son bouton synthétisé (T14), accompagné de la note du serveur : le formulaire montre ce qui a
+    été donné, la note ce qui a été retenu, comme pour tout autre champ.
+  - wellness lit `field`, `given` et `used`, jamais `note`, et écrit ses propres textes en français et en
+    anglais dans son panneau ; il saute `workload.rf`, déjà dit par sa note sur les copies au-delà de 8
+    (T17). Les textes du sizer qui atteignent wellness restent en anglais à ce stade.
+- **Entrées d'index secondaire : borne de 10⁴ à 10⁹ par enregistrement.** wellness garde les octets des
+  index secondaires et de set quand il fusionne des objets (sa T26), et un cluster de peu d'objets porte
+  ses octets d'index sur peu d'enregistrements : tous deux arrivent ici comme beaucoup d'entrées par
+  enregistrement. 10⁴ ramenait l'exemple relevé à 40 % de sa RAM d'index secondaire (4 nœuds génériques
+  au lieu de 8). 10⁹ dépasse de loin ce qu'un enregistrement de 8 Mio contient (quelques millions
+  d'éléments de liste ou de map) : la borne arrête encore une valeur mal saisie, et les chiffres restent
+  finis (au plus 8,5 × 10³⁴ o).
+- **Lectures sans octets d'enregistrement.** Règle partagée avec wellness (son `ReadsReachDrives`) : une
+  lecture ne lit des blocs d'enregistrement que sur le moteur device, quand il y a des enregistrements
+  (`objects` > 0) et que leur taille stockée ((taille + surcoût) × compression) dépasse 0. Sinon elle ne
+  coûte que du CPU et du réseau ; l'IO de l'index sur flash (T9) ne change pas. Un surcoût
+  d'enregistrement donne des octets aux enregistrements, qui sont de nouveau lus.
+- **Plafonds du formulaire de 5 à 100 %** (stockage, RAM, CPU, IO), comme le serveur : ils s'arrêtaient à
+  10 %, si bien qu'un remplissage de 7 % saisi sur la page était dimensionné à 10 %. Un test lit chaque
+  champ borné de la page et vérifie que le serveur borne juste au-delà et pas à la borne, hors des
+  planchers propres au formulaire (taille d'enregistrement, ressources du nœud générique).
+- **Lien retour vérifié par le serveur.** `back` (T10) est accepté s'il est en http, sans identifiants,
+  vers localhost ou une adresse loopback (127.0.0.0/8, ::1, IPv4 mappée), les adresses que
+  `WELLNESS_ADDR` accepte ; il est passé à la page dans `<body data-back>`. Sinon l'avis de
+  pré-remplissage dit qu'il n'y a pas de lien retour, au lieu de se taire. wellness nomme sa page par
+  l'hôte qu'emploie le navigateur : sur [::1] ou 127.0.0.2, le lien disparaissait.
+- Compatibilité : requête inchangée ; `clamps` est un champ nouveau de la réponse, qu'un wellness plus
+  ancien ignore. Pour la parité des chiffres sur des besoins sans enregistrement maître (tombstones
+  seules), déployer le sizer d'abord.
+- Effets :
+  - exemple par défaut inchangé (aucune borne, 6 nœuds, 293 800 IOPS) ;
+  - 10⁶ enregistrements de 0 o sur device à 100 000 lectures/s : 130 000 IOPS → 0, i4i.large 11 → 9 nœuds
+    (CPU), L8s_v3 4 → 3 (topologie), comme wellness ;
+  - entrées d'index secondaire au-delà de 10⁴ : dimensionnées entières ; l'exemple relevé, limité par la
+    RAM, passe de 4 nœuds génériques (i4i.2xlarge × 7, 4 068 $/mois) à 8 (× 16, 9 297 $/mois), comme les
+    besoins de wellness ;
+  - un plafond de 5 à 10 % saisi sur la page est dimensionné tel quel (stockage à 7 % : 9 nœuds au lieu
+    de 6, comme l'API et wellness) ;
+  - le lien « Back to … » apparaît pour wellness sur [::1] ou 127.0.0.x ;
+  - les notes de bornes ne changent aucun chiffre.
+
+### Arrondi par excès à l'erreur de calcul près, partagé avec wellness
+
+- Au multiple exact de la capacité d'un nœud, le sizer comptait un nœud de plus que wellness. Le CPU se
+  calcule en deux divisions, (tx/s ÷ tx par vCPU) ÷ (vCPU × plafond) : 1 008 000 ÷ 15 000 ÷ 9,6 =
+  7,000000000000001, que `math.Ceil` portait à 8. Le stockage aussi : la taille moyenne que transmet
+  wellness est remultipliée par le nombre d'objets, et 28,125 To deviennent 28 125 000 000 000,004 o.
+  Exemples : 1 008 000 tx/s sur 16 vCPU sans croissance ni perte, 8 nœuds ici contre 7 (9 contre 8 en
+  N+1) ; hypothèses par défaut avec 6 480 000 + 6 480 000 tx/s, 119 contre 118 ; 28,125 To sur
+  i4i.4xlarge à 50 %, 16 contre 15. `Evaluate` jugeait de plus insuffisante une configuration pile à ses
+  plafonds (« Not enough CPU: 3.6 vCPU needed vs 3.6 vCPU usable »). wellness n'était pas exempt :
+  553 846,15 tx/s mesurés, +30 %, y donnaient 720 000,0000000001 tx/s, donc 6 nœuds au lieu de 5, et
+  16 vCPU au lieu de 8 dans son profil générique.
+- Convention partagée (wellness T46) : tout arrondi par excès d'un ratio calculé passe par
+  `ceilRatio(r)` = ⌈r × (1 − 10⁻¹²)⌉ (`sizing.RatioTolerance`) : les nœuds de chaque ressource, les blocs
+  de 4 Kio d'une lecture (T12) et `partition-tree-sprigs` (T9). L'évaluation teste charge × (1 − 10⁻¹²) >
+  limite (`exceeds`), pour 100 % comme pour le seuil « tight » de 85 %, et la jauge de l'interface fait
+  de même avec `thresholds.tolerance` de `/api/defaults`.
+- Pourquoi une tolérance plutôt qu'un réordonnancement des divisions : une seule division pour le CPU
+  n'aurait corrigé ni le stockage (taille moyenne × nombre d'objets), ni les moyennes d'index et
+  d'entrées d'index secondaire que transmet wellness, ni la croissance appliquée dans un autre ordre
+  (wellness : (lectures + écritures) × (1 + g) ; ici lectures × (1 + g) + écritures × (1 + g)), ni
+  l'erreur propre à wellness. Valeur : sur 3 000 clusters aléatoires, les demandes des deux outils
+  diffèrent d'au plus 4,4 × 10⁻¹⁶ en relatif (deux ulps) ; 10⁻¹² en est plus de 2 000 fois et ne
+  représente qu'un octet par To de demande : aucun excès réel n'est absorbé. C'est aussi la marge que
+  wellness prend déjà pour ses quantiles (`model.Histogram.QuantileFloor`).
+- La borne `MaxNodes` se compare au ratio arrondi, avant la conversion en entier ; elle n'est pas
+  changée. ⌈nœuds ÷ racks⌉ reste un arrondi exact d'entiers. Aucune note : l'écart absorbé est du bruit
+  de calcul.
+- Effet, aux multiples exacts seulement : les exemples donnent 7, 8, 118 et 15 dans les deux outils, et
+  une configuration pile à ses plafonds est « tight » à 100 %. Sur 3 000 clusters tirés au multiple
+  exact d'un nœud, le sizer s'écartait du compte exact 648 fois (CPU) et 249 fois (stockage), wellness
+  52 et 49 fois, et les deux outils différaient 663 et 271 fois : 0 après. L'exemple par défaut est
+  inchangé ; sur les besoins des rapports réels de wellness, aucun nombre de nœuds ne change.
+  `/api/defaults` gagne `thresholds.tolerance`.

@@ -23,16 +23,18 @@ What it computes:
   with a planning growth (30 % by default) applied to the records and to the throughput alike (CPU,
   device IOPS, replication traffic), and the ceilings of the Aerospike capacity planning guide: device
   usage 50 %, RAM 70 % after 10 % for the OS (5 GiB at least), CPU 60 %, headroom for the loss of a node
-  or a rack, at least RF+1 nodes, the same number in every rack. Aerospike Wellness sizes with the same
-  conventions. Device IO is counted in 4 KiB blocks, the unit of the instances' sustained IOPS: a read
-  that finds its record fetches the blocks the record spans (no cache serves reads unless a measured
-  cache_read_pct says so), one that finds nothing stops at the primary index and reads no record
-  block, though with the index on flash every read, found or not, still reads its index entry (the
-  share of reads that find a record is a workload input, 100 % by default; every read still costs
-  CPU and network), a write the bytes of every copy (records fill 8 MiB write blocks). Records kept
-  in memory (7.0+ write blocks) are planned at the device fill, the indexes at the RAM fill.
-  All-flash sizing follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks,
-  10 B of RAM per sprig); secondary indexes count 14 B per entry at 1.5 sparseness.
+  or a rack, at least RF+1 nodes, the same number in every rack. A demand that is an exact multiple of a
+  node takes exactly that many nodes: ratios are rounded up past floating-point error only (1e-12
+  relative). Aerospike Wellness sizes with the same conventions. Device IO is counted in 4 KiB blocks,
+  the unit of the instances' sustained IOPS: a read that finds its record fetches the blocks the record
+  spans (no cache serves reads unless a measured cache_read_pct says so), one that finds nothing stops
+  at the primary index and reads no record block, as does every read with no record or records of no
+  bytes, though with the index on flash every read, found or not, still reads its index entry (the share
+  of reads that find a record is a workload input, 100 % by default; every read still costs CPU and
+  network), a write the bytes of every copy (records fill 8 MiB write blocks). Records kept in memory
+  (7.0+ write blocks) are planned at the device fill, the indexes at the RAM fill. All-flash sizing
+  follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks, 10 B of RAM per sprig);
+  secondary indexes count 14 B per entry at 1.5 sparseness.
 - **Replication traffic** across AZs (rack-awareness, Active Rack, Local read, client placement) or
   across regions with XDR, and its monthly cost per provider: cross-AZ rates (AWS both directions,
   Google Cloud egress only, Azure free since 2024) or inter-region rates, editable.
@@ -44,5 +46,6 @@ The form can be prefilled from the URL, one parameter per field named as in the 
 that way with the parameters of an analysed cluster.
 
 The API serves the loopback names and the configured listen address only. Every result is an estimate:
-the assumptions behind it are shown and editable in the interface.
+the assumptions behind it are shown and editable in the interface. An input outside its bounds is sized
+at the nearest bound, with a note that says so (`clamps` in the API).
 Verify prices and network rates against your provider's official calculator before any budget decision.

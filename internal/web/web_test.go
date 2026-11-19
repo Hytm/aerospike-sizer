@@ -169,6 +169,13 @@ func TestPlanKeepsDefaultsForMissingFields(t *testing.T) {
 	if !strings.Contains(body, `"clamps":[]`) {
 		t.Errorf("plan without clamps: %s", body)
 	}
+	// Every text comes with its code and values (T22): the explanation, the fit checks and the
+	// notes, even when there are none.
+	for _, field := range []string{`"explain_messages":[{"code":"explain.`, `"check_messages":[]`, `"note_messages":[]`, `"messages":[{"code":"check.comfortable","text":"Comfortable margin on storage, RAM, CPU and IOPS."}]`} {
+		if !strings.Contains(body, field) {
+			t.Errorf("plan without %s: %s", field, body)
+		}
+	}
 }
 
 // The pricing of a request picks the basis and the region of each recommendation; a provider left

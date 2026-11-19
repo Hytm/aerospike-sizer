@@ -3,8 +3,8 @@
 package plan
 
 import (
-	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/Hytm/aerospike-sizer/internal/catalog"
 	"github.com/Hytm/aerospike-sizer/internal/network"
@@ -85,12 +85,12 @@ func DefaultPricing() Pricing {
 // normalize keeps a known basis, else prices on demand, and per provider a region of the provider
 // for its recommendation, else its default region; a value given but unknown gets a note. These are
 // fallbacks of enumerations, not bounds: they are notes, not clamps (T18).
-func (pr Pricing) normalize() (Pricing, []string) {
+func (pr Pricing) normalize() (Pricing, []sizing.Message) {
 	out := Pricing{Basis: pr.Basis, Regions: make(map[string]string, len(catalog.Providers))}
-	var notes []string
+	var notes []sizing.Message
 	if out.Basis != catalog.OnDemand && out.Basis != catalog.Commitment1Y {
 		if out.Basis != "" {
-			notes = append(notes, fmt.Sprintf("Unknown pricing basis %q: on-demand prices used.", out.Basis))
+			notes = append(notes, sizing.Note("note.unknown_pricing_basis", sizing.Args{"basis": string(out.Basis)}))
 		}
 		out.Basis = catalog.OnDemand
 	}
@@ -103,7 +103,7 @@ func (pr Pricing) normalize() (Pricing, []string) {
 		out.Regions[p.Key] = p.DefaultRegion
 		if id != "" {
 			def, _ := p.Region(p.DefaultRegion)
-			notes = append(notes, fmt.Sprintf("%s: unknown region %q for the recommendation, %s used instead.", p.Label, id, def.Label))
+			notes = append(notes, sizing.Note("note.unknown_pricing_region", sizing.Args{"provider": p.Label, "region": id, "default_region": def.ID, "default_region_label": def.Label}))
 		}
 	}
 	return out, notes
@@ -137,9 +137,13 @@ type Generic struct {
 	// Load is the demand over the usable capacity of the nodes left after the planned loss.
 	Load map[sizing.Constraint]float64 `json:"load"`
 	// Checks are the fit's remarks on the node count when it is not comfortable: a topology rule
-	// the count misses, a tight resource.
-	Checks  []string `json:"checks"`
-	Explain string   `json:"explain"`
+	// the count misses, a tight resource. Explain tells what drives the sizing. CheckMessages and
+	// ExplainMessages are the same texts as codes and values (T22): one for one with Checks, and
+	// the sentences of Explain, which joins them with a space.
+	Checks          []string         `json:"checks"`
+	CheckMessages   []sizing.Message `json:"check_messages"`
+	Explain         string           `json:"explain"`
+	ExplainMessages []sizing.Message `json:"explain_messages"`
 }
 
 // Cost is the monthly cost of a configuration, list prices.
@@ -177,11 +181,19 @@ type Response struct {
 	Network    network.Traffic   `json:"network"`
 	Rows       []Row             `json:"rows"`
 	Pending    bool              `json:"pending"` // live prices are being looked up: ask again shortly
-	Notes      []string          `json:"notes"`
+	// Notes are in English; NoteMessages are the same notes as codes and values, one for one (T22).
+	Notes        []string         `json:"notes"`
+	NoteMessages []sizing.Message `json:"note_messages"`
 	// Clamps are the inputs moved into their bounds, each with a note that says what was used and,
 	// for the bounds of the model, what that changes: the workload, the generic node, the
 	// hypotheses and the network settings, in that order; empty when nothing was bounded.
 	Clamps []ClampNote `json:"clamps"`
+}
+
+// note adds a note, in English and as a message.
+func (r *Response) note(m sizing.Message) {
+	r.Notes = append(r.Notes, m.Text)
+	r.NoteMessages = append(r.NoteMessages, m)
 }
 
 // ClampNote is an input the estimate moved into its bounds, with what the interface says of it.
@@ -219,29 +231,34 @@ func Compute(req Request, q Quoter) Response {
 	c := computation{demand: detail.Amounts, hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w.Grown(h)), quoter: q, basis: pr.Basis}
 
 	g := sizing.Size(c.demand, node, h, c.layout)
-	generic := Generic{Demand: detail, Node: node, Usable: h.Usable(node), Sizing: g, Load: map[sizing.Constraint]float64{}, Checks: []string{}, Explain: g.Explain(w, detail, node, h, c.layout)}
+	explained := g.Explained(w, detail, node, h, c.layout)
+	generic := Generic{Demand: detail, Node: node, Usable: h.Usable(node), Sizing: g, Load: map[sizing.Constraint]float64{},
+		Checks: []string{}, CheckMessages: []sizing.Message{}, Explain: strings.Join(sizing.Texts(explained), " "), ExplainMessages: explained}
 	if g.Nodes > 0 {
 		fit := sizing.Evaluate(c.demand, node, g.Nodes, h, c.layout)
 		generic.Load = fit.Load
 		if fit.Status != sizing.OK {
-			generic.Checks = fit.Checks
+			generic.Checks, generic.CheckMessages = fit.Checks, fit.Messages
 		}
 	}
 	resp := Response{
-		Generic:    generic,
-		Layout:     c.layout,
-		Workload:   w,
-		Hypotheses: h,
-		Settings:   s,
-		Pricing:    pr,
-		Network:    c.traffic,
-		Rows:       []Row{},
-		Notes:      append([]string{}, prNotes...),
-		Clamps:     clamps,
+		Generic:      generic,
+		Layout:       c.layout,
+		Workload:     w,
+		Hypotheses:   h,
+		Settings:     s,
+		Pricing:      pr,
+		Network:      c.traffic,
+		Rows:         []Row{},
+		Notes:        []string{},
+		NoteMessages: []sizing.Message{},
+		Clamps:       clamps,
 	}
-	resp.Notes = append(resp.Notes, indexNotes(req.Workload, w)...)
+	for _, m := range slices.Concat(prNotes, indexNotes(req.Workload, w)) {
+		resp.note(m)
+	}
 	if h.Loss == sizing.RackLoss && c.layout.Racks == 1 {
-		resp.Notes = append(resp.Notes, "The ceilings are kept after the loss of one node: losing a whole rack can only be planned for with rack-aware AZs in a single region.")
+		resp.note(sizing.Note("note.rack_loss_as_node", nil))
 	}
 	for i := range catalog.Providers {
 		p := &catalog.Providers[i]
@@ -251,7 +268,7 @@ func Compute(req Request, q Quoter) Response {
 		region, _ := p.Region(pr.Regions[p.Key])
 		o, ok := sizing.Recommend(p.Offered(region.ID), c.demand, h, c.layout, c.basis)
 		if !ok {
-			resp.Notes = append(resp.Notes, fmt.Sprintf("%s: no instance type of the catalog offered in %s suits this workload.", p.Label, region.Label))
+			resp.note(sizing.Note("note.no_instance", sizing.Args{"provider": p.Label, "region": region.ID, "region_label": region.Label}))
 			continue
 		}
 		resp.Rows = append(resp.Rows, c.row("auto-"+p.Key, true, p, region, o.Instance, o.Nodes))
@@ -259,17 +276,17 @@ func Compute(req Request, q Quoter) Response {
 	for _, r := range req.Rows {
 		p, ok := catalog.Get(r.Provider)
 		if !ok {
-			resp.Notes = append(resp.Notes, fmt.Sprintf("Unknown provider %q ignored.", r.Provider))
+			resp.note(sizing.Note("note.unknown_provider", sizing.Args{"provider": r.Provider}))
 			continue
 		}
 		region, okRegion := p.Region(r.Region)
 		inst, okInst := p.Instance(r.Instance)
 		if !okRegion || !okInst {
-			resp.Notes = append(resp.Notes, fmt.Sprintf("%s: unknown region %q or instance type %q ignored.", p.Label, r.Region, r.Instance))
+			resp.note(sizing.Note("note.unknown_row", sizing.Args{"provider": p.Label, "region": r.Region, "instance": r.Instance}))
 			continue
 		}
 		if !inst.OfferedIn(region.ID) {
-			resp.Notes = append(resp.Notes, fmt.Sprintf("%s: instance type %q is not offered in %s, ignored.", p.Label, r.Instance, region.Label))
+			resp.note(sizing.Note("note.not_offered", sizing.Args{"provider": p.Label, "instance": r.Instance, "region": region.ID, "region_label": region.Label}))
 			continue
 		}
 		resp.Rows = append(resp.Rows, c.row(r.ID, false, p, region, inst, min(max(r.Nodes, 1), sizing.MaxNodes)))
@@ -285,9 +302,9 @@ func Compute(req Request, q Quoter) Response {
 // was asked: on flash with the memory engine, which index-type flash does not work with, Bounded
 // plans it in RAM. That is a rewrite of a placement, not a bound on a number: it is a note, not a
 // clamp (T18).
-func indexNotes(asked, w sizing.Workload) []string {
+func indexNotes(asked, w sizing.Workload) []sizing.Message {
 	if asked.IndexOn == sizing.OnFlash && w.IndexOn == sizing.InRAM {
-		return []string{"The primary index is planned in RAM: index-type flash does not work with the memory engine (configuration reference, 7.0)."}
+		return []sizing.Message{sizing.Note("note.flash_index_in_ram", nil)}
 	}
 	return nil
 }

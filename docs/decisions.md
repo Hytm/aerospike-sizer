@@ -525,7 +525,8 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   `objects` 0, le sizer ne planifie alors ni index ni stockage d'enregistrements, et wellness avertit
   que ses configurations laissent de côté ces octets d'index et d'enregistrements (choix de
   l'utilisateur : pas de champ de tombstones dans l'API ; wellness T46). Aucun cluster réel n'est dans
-  ce cas.
+  ce cas. (amendé le 2026-11-19, T20 : avec l'index sur flash, le sizer planifie toutefois 256 sprigs
+  par partition, le minimum configurable, et wellness les mêmes.)
 - **Écart qui demeure** : l'espace de l'index primaire all-flash. wellness compte les octets mesurés
   (`index_flash_used_bytes`, environ 64 B par entrée) ; le sizer compte les blocs de sprigs du guide (T9 :
   4 096 partitions × RF × sprigs à 50 % de remplissage, arrondis à une puissance de deux, et 10 B de RAM
@@ -705,12 +706,28 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   64 (sans usage sur flash), `hypotheses.sprig_fill` 0,5 et `hypotheses.sprig_ram_bytes` 10, qui sont
   désormais les constantes avec lesquelles il dimensionne lui-même. Le sizer applique la croissance aux
   objets comme wellness.
-- **Garantie nouvelle.** Quand tous les namespaces qui ont des enregistrements placent leur index
-  primaire de la même façon, `generic.demand.flash_index`, `sprigs`, `index_iops` et
-  `sprigs_per_partition` du sizer égalent ceux que wellness planifie, et les deux outils donnent le même
-  nombre de nœuds. Écarts qui demeurent, chacun déjà dit : placements mêlés, où le sizer place l'index
-  d'un bloc (notes de T18) ; moteur mémoire avec `index-type flash`, que le sizer planifie en RAM (T18) ;
-  plus de 8 copies stockées (T17, T18).
+- **Garantie nouvelle.** Quand il y a au moins un enregistrement maître et que tous les namespaces,
+  qu'ils en aient ou non, placent leur index primaire de la même façon (pmem compté en mémoire, T18),
+  `generic.demand.flash_index`, `sprigs`, `index_iops` et `sprigs_per_partition` du sizer égalent ceux
+  que wellness planifie, et les deux outils donnent le même nombre de nœuds. Un namespace sans
+  enregistrement compte : wellness planifie les sprigs de tout namespace en `index-type flash`, 256 par
+  partition au moins, et `workload.rf` porte les copies du namespace qui en stocke le plus, quel que soit
+  son index. Sans enregistrement maître, des tombstones seules sur flash donnent les mêmes 256 sprigs par
+  partition dans les deux outils ; leurs autres octets restent l'écart de T18. Écarts qui demeurent :
+  - placements mêlés entre namespaces qui ont des enregistrements, où le sizer place l'index d'un bloc
+    (notes de T18) ;
+  - un namespace en `index-type flash` sans enregistrement quand la plupart des octets de l'index ne
+    sont pas sur flash : à côté de namespaces qui ont leur index en mémoire, ou sans aucune entrée
+    d'index nulle part. Le sizer, qui reçoit alors l'index en mémoire (T18), ne lui planifie rien ;
+    wellness lui planifie 256 sprigs par partition (8,6 Go de blocs et 21 Mo de RAM en RF 2), et l'IO
+    d'index de chaque lecture quand il n'y a aucun enregistrement maître. Le stockage et la RAM
+    diffèrent, le nombre de nœuds parfois, et aucune note ne le dit encore (relecture du 2026-11-19) ;
+  - un namespace sans enregistrement dont l'index est en mémoire et qui stocke plus de copies que ceux
+    sur flash : le sizer planifie les sprigs et l'IO d'index à ces copies (`workload.rf`), wellness à
+    celles des namespaces sur flash (les deux tiers des blocs pour 2 copies contre 3) ; la note de
+    wellness sur les facteurs de réplication le dit ;
+  - moteur mémoire avec `index-type flash`, que le sizer planifie en RAM (T18) ;
+  - plus de 8 copies stockées (T17, T18).
 - **La formule est tenue en deux copies.** Le même tableau de vecteurs figure dans les deux suites
   (`TestFlashIndexVectorsSharedWithWellness` ici, `TestFlashIndexVectorsSharedWithTheSizer` chez
   wellness), dont l'exemple du guide : 4 milliards d'enregistrements RF2 → 32 768 sprigs par partition,
@@ -721,11 +738,12 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   dépôts et dans les deux tableaux.
 - **Un seul namespace.** Le sizer planifie un seul namespace. wellness planifie les enregistrements
   maîtres de ses namespaces à index sur flash comme un seul namespace, au plus grand nombre de copies que
-  l'un d'eux stocke (choix de l'utilisateur) : c'est ce que le sizer reçoit et planifie. Aerospike règle
-  `partition-tree-sprigs` par namespace : sur les 16 instantanés réels à plusieurs namespaces sur flash,
-  un calcul par namespace donnerait de −13,8 à +10,6 % de stockage, selon le côté où tombe l'arrondi à la
-  puissance de deux. Les tombstones ne sont pas comptées : sur les instantanés réels, qui en portent
-  jusqu'à 25 % des enregistrements maîtres, elles ne changeraient aucune puissance de deux.
+  l'un d'eux stocke (choix de l'utilisateur) : c'est ce que le sizer reçoit et planifie dans le cas de
+  la garantie ci-dessus. Aerospike règle `partition-tree-sprigs` par namespace : sur les 16 instantanés
+  réels à plusieurs namespaces sur flash, un calcul par namespace donnerait de −13,8 à +10,6 % de
+  stockage, selon le côté où tombe l'arrondi à la puissance de deux. Les tombstones ne sont pas
+  comptées : sur les instantanés réels, qui en portent jusqu'à 25 % des enregistrements maîtres, elles
+  ne changeraient aucune puissance de deux.
 - La liste « Dimensionnement partagé » des deux `CLAUDE.md` gagne la ligne de l'index primaire sur flash
   (sizer T9, T20 ; wellness T48).
 - Effet : aucun chiffre du sizer ne change, pour aucune requête. Sur les 24 instantanés, la demande

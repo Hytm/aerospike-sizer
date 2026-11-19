@@ -56,20 +56,20 @@ func TestQuoteIsPendingThenLiveThenRefreshed(t *testing.T) {
 	f := &fakeFetcher{price: 0.199}
 	b := book(f, &clock)
 
-	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.172, Pending}) {
+	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.172, Pending, catalog.OnDemand}) {
 		t.Errorf("first quote = %+v", q)
 	}
 	b.Wait()
-	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.199, Live}) {
+	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.199, Live, catalog.OnDemand}) {
 		t.Errorf("cached quote = %+v", q)
 	}
 	f.set(0.25, nil)
 	clock = clock.Add(2 * time.Hour)
-	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.199, Live}) {
+	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.199, Live, catalog.OnDemand}) {
 		t.Errorf("a stale price stays quoted while it refreshes: %+v", q)
 	}
 	b.Wait()
-	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.25, Live}) || f.count() != 2 {
+	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.25, Live, catalog.OnDemand}) || f.count() != 2 {
 		t.Errorf("refreshed quote = %+v after %d calls", q, f.count())
 	}
 }
@@ -80,17 +80,17 @@ func TestFailedLookupFallsBackOnTheReferenceAndRetries(t *testing.T) {
 	b := book(f, &clock)
 	b.Quote("aws", "eu-west-3", large)
 	b.Wait()
-	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.172, Reference}) || f.count() != 1 {
+	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.172, Reference, catalog.OnDemand}) || f.count() != 1 {
 		t.Errorf("quote = %+v after %d calls", q, f.count())
 	}
 	f.set(0.199, nil)
 	clock = clock.Add(2 * time.Minute)
 	// The retry is pending like a first lookup: the interface keeps asking until the price lands.
-	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.172, Pending}) {
+	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.172, Pending, catalog.OnDemand}) {
 		t.Errorf("quote starting the retry = %+v", q)
 	}
 	b.Wait()
-	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.199, Live}) {
+	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.199, Live, catalog.OnDemand}) {
 		t.Errorf("retried quote = %+v", q)
 	}
 }
@@ -105,7 +105,7 @@ func TestOneLookupRunsAtATime(t *testing.T) {
 	}
 	close(f.gate)
 	b.Wait()
-	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.199, Live}) || f.count() != 1 {
+	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.199, Live, catalog.OnDemand}) || f.count() != 1 {
 		t.Errorf("quote = %+v after %d calls", q, f.count())
 	}
 }
@@ -115,7 +115,7 @@ func TestNonPositivePriceIsNotLive(t *testing.T) {
 	b := book(&fakeFetcher{price: 0}, &clock)
 	b.Quote("aws", "eu-west-3", large)
 	b.Wait()
-	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.172, Reference}) {
+	if q := b.Quote("aws", "eu-west-3", large); q != (Quote{0.172, Reference, catalog.OnDemand}) {
 		t.Errorf("quote = %+v", q)
 	}
 }
@@ -137,7 +137,7 @@ func TestProviderWithoutSourceQuotesTheReference(t *testing.T) {
 	clock := time.Unix(1e9, 0)
 	b := book(&fakeFetcher{}, &clock)
 	z3 := catalog.Instance{Name: "z3-highmem-8-highlssd", PriceHour: 1.15}
-	if q := b.Quote("gcp", "europe-west1", z3); q != (Quote{1.15, Reference}) {
+	if q := b.Quote("gcp", "europe-west1", z3); q != (Quote{1.15, Reference, catalog.OnDemand}) {
 		t.Errorf("quote = %+v", q)
 	}
 	if !b.Live("aws") || b.Live("gcp") || (&Book{}).Live("aws") {

@@ -62,6 +62,51 @@ type Request struct {
 	Network    network.Settings  `json:"network"`
 	Rows       []RowRequest      `json:"rows"`
 	Auto       []string          `json:"auto"` // providers whose recommended configuration is listed
+	Pricing    Pricing           `json:"pricing"`
+}
+
+// Pricing is what the configurations are priced and recommended on (decision T21): a basis, and per
+// provider the region of its recommended configuration.
+type Pricing struct {
+	Basis   catalog.Basis     `json:"basis"`
+	Regions map[string]string `json:"regions"` // provider key → region id
+}
+
+// DefaultPricing prices on demand, each provider's recommendation in its default region. The map is
+// new on every call: a request decodes into it, and must not leak into the next one.
+func DefaultPricing() Pricing {
+	regions := make(map[string]string, len(catalog.Providers))
+	for _, p := range catalog.Providers {
+		regions[p.Key] = p.DefaultRegion
+	}
+	return Pricing{Basis: catalog.OnDemand, Regions: regions}
+}
+
+// normalize keeps a known basis, else prices on demand, and per provider a region of the provider
+// for its recommendation, else its default region; a value given but unknown gets a note. These are
+// fallbacks of enumerations, not bounds: they are notes, not clamps (T18).
+func (pr Pricing) normalize() (Pricing, []string) {
+	out := Pricing{Basis: pr.Basis, Regions: make(map[string]string, len(catalog.Providers))}
+	var notes []string
+	if out.Basis != catalog.OnDemand && out.Basis != catalog.Commitment1Y {
+		if out.Basis != "" {
+			notes = append(notes, fmt.Sprintf("Unknown pricing basis %q: on-demand prices used.", out.Basis))
+		}
+		out.Basis = catalog.OnDemand
+	}
+	for _, p := range catalog.Providers {
+		id := pr.Regions[p.Key]
+		if _, ok := p.Region(id); ok {
+			out.Regions[p.Key] = id
+			continue
+		}
+		out.Regions[p.Key] = p.DefaultRegion
+		if id != "" {
+			def, _ := p.Region(p.DefaultRegion)
+			notes = append(notes, fmt.Sprintf("%s: unknown region %q for the recommendation, %s used instead.", p.Label, id, def.Label))
+		}
+	}
+	return out, notes
 }
 
 // DefaultRequest is the form as the interface opens. Every read finds its record: the share is a
@@ -79,6 +124,7 @@ func DefaultRequest() Request {
 		Hypotheses: sizing.DefaultHypotheses(),
 		Network:    network.DefaultSettings(),
 		Auto:       auto,
+		Pricing:    DefaultPricing(),
 	}
 }
 
@@ -127,6 +173,7 @@ type Response struct {
 	Workload   sizing.Workload   `json:"workload"`   // as normalized
 	Hypotheses sizing.Hypotheses `json:"hypotheses"` // as normalized; ram_fill is the ceiling the demand calls for (Hypotheses.ForDemand)
 	Settings   network.Settings  `json:"settings"`   // as normalized: options their prerequisites rule out are off
+	Pricing    Pricing           `json:"pricing"`    // as normalized: a known basis, a known region per provider
 	Network    network.Traffic   `json:"network"`
 	Rows       []Row             `json:"rows"`
 	Pending    bool              `json:"pending"` // live prices are being looked up: ask again shortly
@@ -155,6 +202,7 @@ type computation struct {
 	layout  sizing.Layout
 	traffic network.Traffic
 	quoter  Quoter
+	basis   catalog.Basis
 }
 
 // Compute answers a request.
@@ -167,7 +215,8 @@ func Compute(req Request, q Quoter) Response {
 	clamps := clampNotes(slices.Concat(wc, nc, hc, sc), h)
 	detail := sizing.Detailed(w, h)
 	h = h.ForDemand(detail) // the RAM ceiling of a memory namespace follows its records
-	c := computation{demand: detail.Amounts, hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w.Grown(h)), quoter: q}
+	pr, prNotes := req.Pricing.normalize()
+	c := computation{demand: detail.Amounts, hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w.Grown(h)), quoter: q, basis: pr.Basis}
 
 	g := sizing.Size(c.demand, node, h, c.layout)
 	generic := Generic{Demand: detail, Node: node, Usable: h.Usable(node), Sizing: g, Load: map[sizing.Constraint]float64{}, Checks: []string{}, Explain: g.Explain(w, detail, node, h, c.layout)}
@@ -184,9 +233,10 @@ func Compute(req Request, q Quoter) Response {
 		Workload:   w,
 		Hypotheses: h,
 		Settings:   s,
+		Pricing:    pr,
 		Network:    c.traffic,
 		Rows:       []Row{},
-		Notes:      []string{},
+		Notes:      append([]string{}, prNotes...),
 		Clamps:     clamps,
 	}
 	resp.Notes = append(resp.Notes, indexNotes(req.Workload, w)...)
@@ -198,8 +248,8 @@ func Compute(req Request, q Quoter) Response {
 		if !slices.Contains(req.Auto, p.Key) {
 			continue
 		}
-		region, _ := p.Region(p.DefaultRegion)
-		o, ok := sizing.Recommend(p.Offered(region.ID), c.demand, h, c.layout, catalog.OnDemand)
+		region, _ := p.Region(pr.Regions[p.Key])
+		o, ok := sizing.Recommend(p.Offered(region.ID), c.demand, h, c.layout, c.basis)
 		if !ok {
 			resp.Notes = append(resp.Notes, fmt.Sprintf("%s: no instance type of the catalog offered in %s suits this workload.", p.Label, region.Label))
 			continue
@@ -250,7 +300,7 @@ func (c computation) row(id string, auto bool, p *catalog.Provider, region catal
 	if r.Fit.Status == sizing.OK {
 		return r
 	}
-	if alt, ok := sizing.Comfortable(p.Offered(region.ID), c.demand, c.hyp, c.layout, nodes, catalog.OnDemand); ok && alt.Name != inst.Name {
+	if alt, ok := sizing.Comfortable(p.Offered(region.ID), c.demand, c.hyp, c.layout, nodes, c.basis); ok && alt.Name != inst.Name {
 		a := c.evaluate(id+"/alt", false, p, region, alt, nodes)
 		r.Alternative = &a
 	}
@@ -258,7 +308,7 @@ func (c computation) row(id string, auto bool, p *catalog.Provider, region catal
 }
 
 func (c computation) evaluate(id string, auto bool, p *catalog.Provider, region catalog.Region, inst catalog.Instance, nodes int) Row {
-	price := c.quoter.Quote(p.Key, region.ID, inst)
+	price := c.quote(p.Key, region.ID, inst)
 	cost := Cost{Compute: price.Hourly * float64(nodes) * catalog.HoursPerMonth * float64(c.traffic.Clusters), Network: c.traffic.Costs[p.Key], Clusters: c.traffic.Clusters}
 	cost.Total = cost.Compute + cost.Network
 	return Row{
@@ -266,4 +316,15 @@ func (c computation) evaluate(id string, auto bool, p *catalog.Provider, region 
 		Fit:   sizing.Evaluate(c.demand, sizing.OfInstance(inst), nodes, c.hyp, c.layout),
 		Price: price, Cost: cost,
 	}
+}
+
+// quote prices one node on the basis: on demand, live where the quoter looks it up; with a one-year
+// commitment, the reference in PricesRegion, which no live source gives (T21).
+func (c computation) quote(provider, region string, inst catalog.Instance) pricing.Quote {
+	if c.basis == catalog.Commitment1Y {
+		return pricing.Quote{Hourly: inst.Rate(catalog.Commitment1Y), Source: pricing.Reference, Basis: catalog.Commitment1Y}
+	}
+	q := c.quoter.Quote(provider, region, inst)
+	q.Basis = catalog.OnDemand
+	return q
 }

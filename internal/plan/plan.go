@@ -189,6 +189,7 @@ func Compute(req Request, q Quoter) Response {
 		Notes:      []string{},
 		Clamps:     clamps,
 	}
+	resp.Notes = append(resp.Notes, indexNotes(req.Workload, w)...)
 	if h.Loss == sizing.RackLoss && c.layout.Racks == 1 {
 		resp.Notes = append(resp.Notes, "The ceilings are kept after the loss of one node: losing a whole rack can only be planned for with rack-aware AZs in a single region.")
 	}
@@ -224,6 +225,17 @@ func Compute(req Request, q Quoter) Response {
 			(r.Alternative != nil && r.Alternative.Price.Source == pricing.Pending)
 	}
 	return resp
+}
+
+// indexNotes say how the primary index of a request is planned when it cannot be planned where it
+// was asked: on flash with the memory engine, which index-type flash does not work with, Bounded
+// plans it in RAM. That is a rewrite of a placement, not a bound on a number: it is a note, not a
+// clamp (T18).
+func indexNotes(asked, w sizing.Workload) []string {
+	if asked.IndexOn == sizing.OnFlash && w.IndexOn == sizing.InRAM {
+		return []string{"The primary index is planned in RAM: index-type flash does not work with the memory engine (configuration reference, 7.0)."}
+	}
+	return nil
 }
 
 // row evaluates a configuration, with a comfortable alternative when it does not fit well. A

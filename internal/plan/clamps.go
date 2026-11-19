@@ -22,8 +22,8 @@ func clampNotes(clamps []sizing.Clamp, h sizing.Hypotheses) []ClampNote {
 }
 
 // clampNote words one clamp. The bounds of the model (the largest record, the most copies, the
-// most secondary index entries) say what the estimate leaves out; any other bound names the field
-// as the page labels it.
+// most secondary index entries, the most primary index bytes per record copy) say what the estimate
+// leaves out; any other bound names the field as the page labels it.
 func clampNote(c sizing.Clamp, h sizing.Hypotheses) string {
 	if c.Used < c.Given {
 		switch c.Field {
@@ -38,6 +38,10 @@ func clampNote(c sizing.Clamp, h sizing.Hypotheses) string {
 		case "workload.sindex_entries":
 			return fmt.Sprintf("Secondary index entries: %s per record is above %s, the most the sizer accepts: the secondary indexes are sized with %s entries per record, %s times fewer than given.",
 				number(c.Given), number(c.Used), number(c.Used), timesText(c.Given/c.Used))
+		case "hypotheses.index_bytes":
+			// 1 MiB per record copy is 16,384 entries of 64 B for each record, tombstones that wellness
+			// folds into its effective figure included (T18): far beyond any cluster measured.
+			return fmt.Sprintf("Primary index: %s B per record copy asked, %s B planned, the most an estimate accepts.", number(c.Given), number(c.Used))
 		}
 	}
 	in := inputOf(c.Field)
@@ -67,7 +71,7 @@ var inputs = map[string]input{
 	"node.storage_tb":               {"Generic node NVMe", unit(" TB")},
 	"node.iops":                     {"Generic node sustained IOPS", number},
 	"hypotheses.growth":             {"Growth", shareText},
-	"hypotheses.index_bytes":        {"Primary index per record", bytesText},
+	"hypotheses.index_bytes":        {"Primary index per record copy", bytesText},
 	"hypotheses.record_overhead":    {"Record overhead", bytesText},
 	"hypotheses.write_overhead":     {"Write-block overhead", shareText},
 	"hypotheses.compression":        {"Compression", shareText},

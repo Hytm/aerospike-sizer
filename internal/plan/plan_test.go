@@ -302,3 +302,35 @@ func TestMemoryNamespaceIsPlannedAtTheStorageFill(t *testing.T) {
 		t.Errorf("device engine: RAM fill = %v", resp.Hypotheses.RAMFill)
 	}
 }
+
+// The primary index cannot be on flash with the memory engine (configuration reference, 7.0): the
+// sizer plans it in RAM and says so in the notes, a rewrite and not a clamp. Bytes per record copy
+// above their bound are a clamp, with their own wording. An index planned as asked gets neither.
+func TestIndexPlannedOtherwiseThanAskedIsNoted(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = nil
+	req.Workload.Engine, req.Workload.IndexOn = sizing.Memory, sizing.OnFlash
+	resp := Compute(req, referenceQuoter{})
+	if resp.Workload.IndexOn != sizing.InRAM || len(resp.Notes) != 1 || !strings.Contains(resp.Notes[0], "planned in RAM") || len(resp.Clamps) != 0 {
+		t.Errorf("memory engine: index %s, notes %q, clamps %+v", resp.Workload.IndexOn, resp.Notes, resp.Clamps)
+	}
+	req.Workload.Engine = sizing.Device
+	if resp := Compute(req, referenceQuoter{}); resp.Workload.IndexOn != sizing.OnFlash || len(resp.Notes) != 0 {
+		t.Errorf("device engine: index %s, notes %q", resp.Workload.IndexOn, resp.Notes)
+	}
+	req.Workload.IndexOn = sizing.InRAM
+	req.Hypotheses.IndexBytes = 2e6
+	resp = Compute(req, referenceQuoter{})
+	want := "Primary index: 2,000,000 B per record copy asked, 1,048,576 B planned, the most an estimate accepts."
+	if resp.Hypotheses.IndexBytes != sizing.MaxBytesPerEntry || len(resp.Notes) != 0 || len(resp.Clamps) != 1 ||
+		resp.Clamps[0].Field != "hypotheses.index_bytes" || resp.Clamps[0].Note != want {
+		t.Errorf("index %v B per copy, notes %q, clamps %+v", resp.Hypotheses.IndexBytes, resp.Notes, resp.Clamps)
+	}
+	// An effective figure under 64 B, as wellness sends it for namespaces storing fewer copies than
+	// RF, is planned as sent: 43.68 B per copy of every record grown by 30 %, RF2.
+	req.Hypotheses.IndexBytes = 43.68
+	resp = Compute(req, referenceQuoter{})
+	if want := 43.68 * req.Workload.Objects * 1.3 * 2; !near(resp.Generic.Demand.Index, want, want*1e-9) || len(resp.Notes) != 0 || len(resp.Clamps) != 0 {
+		t.Errorf("index %v B, want %v; notes %q, clamps %+v", resp.Generic.Demand.Index, want, resp.Notes, resp.Clamps)
+	}
+}

@@ -19,13 +19,15 @@ Requires Go 1.27. `make ci` runs the local checks (gofmt, vet, staticcheck, test
 What it computes:
 
 - **Nodes** from the workload (record size and count, reads and writes, RF, storage engine with or
-  without persistence, primary index in RAM or on flash, secondary and set indexes) on a generic node,
-  with a planning growth (30 % by default) applied to the records and to the throughput alike (CPU,
-  device IOPS, replication traffic), and the ceilings of the Aerospike capacity planning guide: device
-  usage 50 %, RAM 70 % after 10 % for the OS (5 GiB at least), CPU 60 %, headroom for the loss of a node
-  or a rack, at least RF+1 nodes, the same number in every rack. A demand that is an exact multiple of a
-  node takes exactly that many nodes: ratios are rounded up past floating-point error only (1e-12
-  relative). Aerospike Wellness sizes with the same conventions. Device IO is counted in 4 KiB blocks,
+  without persistence, primary index in RAM or on flash (an index on pmem is planned in RAM, since no
+  catalog instance has pmem; the bytes per record copy may be an effective figure under 64 B, as
+  Aerospike Wellness sends it), secondary and set indexes) on a generic node, with a planning growth
+  (30 % by default) applied to the records and to the throughput alike (CPU, device IOPS, replication
+  traffic), and the ceilings of the Aerospike capacity planning guide: device usage 50 %, RAM 70 % after
+  10 % for the OS (5 GiB at least), CPU 60 %, headroom for the loss of a node or a rack, at least RF+1
+  nodes, the same number in every rack. A demand that is an exact multiple of a node takes
+  exactly that many nodes: ratios are rounded up past floating-point error only (1e-12 relative).
+  Aerospike Wellness sizes with the same conventions. Device IO is counted in 4 KiB blocks,
   the unit of the instances' sustained IOPS: a read that finds its record fetches the blocks the record
   spans (no cache serves reads unless a measured cache_read_pct says so), one that finds nothing stops
   at the primary index and reads no record block, as does every read with no record or records of no

@@ -141,7 +141,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   restants (nœuds − ⌈nœuds ÷ racks⌉ pour un rack), pour le CPU et les IOPS comme pour la capacité,
   comme le guide le demande pour le débit.
 - Non modélisé : pmem, tombstones (durable deletes, transactions SC), les 8 blocs d'écriture réservés
-  par device, le cache post-écriture.
+  par device, le cache post-écriture (amendé le 2026-11-19, T18 : un index en pmem est planifié en RAM,
+  aucune instance du catalogue n'ayant de pmem ; wellness replie les tombstones dans les octets d'index
+  par copie effectifs qu'il envoie ; des besoins sans enregistrement maître ne se représentent pas, et
+  wellness l'avertit).
 
 ## T10 — Pré-remplissage par l'URL
 
@@ -242,7 +245,9 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
     maximum 256M, puissance de deux ; au-delà de 32K, consulter le support Aerospike, ce que
     l'explication dit) : le sizer plafonnait à 65 536 et descendait jusqu'à 1 sprig, et son arrondi
     bouclait sans fin au-delà de 2⁶³ (`objects=1e24` avec l'index flash bloquait une goroutine à 100 %) ;
-  - `index-type flash` est refusé avec `storage-engine memory` (référence de configuration, 7.0) ;
+  - `index-type flash` est refusé avec `storage-engine memory` (référence de configuration, 7.0)
+    (amendé le 2026-11-19, T18 : l'index est planifié en RAM et une note le dit ; le refus était
+    silencieux) ;
   - la compression s'applique aussi aux enregistrements en mémoire (`compression` vaut pour
     `storage-engine memory` depuis 7.0) : T9 disait « disque seulement » ;
   - le nœud de secours est compté même quand un seul nœud porte une ressource (le besoin affiché par
@@ -473,3 +478,55 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   52 et 49 fois, et les deux outils différaient 663 et 271 fois : 0 après. L'exemple par défaut est
   inchangé ; sur les besoins des rapports réels de wellness, aucun nombre de nœuds ne change.
   `/api/defaults` gagne `thresholds.tolerance`.
+
+### Index transmis par wellness : octets par copie effectifs, placement d'un bloc, pmem en mémoire
+
+- **Octets d'index primaire par copie effectifs.** wellness envoyait `hypotheses.index_bytes` =
+  max(64, octets d'index en mémoire ÷ (objets maîtres × RF le plus élevé)). Quand les namespaces ne
+  stockent pas tous autant de copies, le vrai chiffre par copie est sous 64 B : le plancher le relevait et
+  le sizer surestimait la RAM d'index primaire (18 instantanés réels mêlant 2 et 3 copies, de 39,4 à
+  56,6 B par copie au RF 3 : de 13 à 62 % de trop). wellness envoie désormais tous les octets de l'index
+  primaire (mémoire, pmem et minorité sur flash), mesurés ou estimés, ÷ (objets maîtres × RF), sans
+  plancher et avec ses décimales : sous 64 B avec des copies mêlées, au-dessus avec des tombstones. La
+  RAM d'index du sizer, objets × (1 + croissance) × RF × `index_bytes`, égale alors celle de wellness. Il
+  envoie 64 quand l'index part sur flash ou sans enregistrement.
+  - Le calcul du sizer ne change pas : `index_bytes` reste borné à [0, 1 Mio], qui accepte déjà moins de
+    64. Le formulaire accepte les décimales (`step="any"`, unité « B per record copy ») : un chiffre
+    prérempli de 43,68 était invalide pour `step="1"`, et les flèches l'arrondissaient à l'octet. Un
+    chiffre effectif sous 64 allume le badge « what-if » ; l'unité, cette décision et la note de wellness
+    sur les facteurs de réplication l'expliquent.
+  - Exemple : 2 × 10⁹ objets en RF 2 et 10⁸ en RF 3, de 1 000 o, envoyés en RF 3 : 43,68 B par copie au
+    lieu de 64, index primaire de 5,24 × 10¹¹ à 3,58 × 10¹¹ o ; la RAM dimensionne, i4i.4xlarge 9 → 6
+    nœuds, i4i.xlarge 27 → 21, L8s_v3 15 → 12.
+- **Chaque index placé d'un bloc.** Le sizer place l'index primaire tout en RAM ou tout sur flash, et de
+  même les index secondaires. wellness l'envoie là où sont la plupart de ses octets, pmem compté en
+  mémoire, jamais sur flash avec le moteur mémoire, et ses notes disent les octets déplacés.
+  - Le sizer dit dans `notes` qu'il planifie en RAM un index demandé sur flash avec le moteur mémoire
+    (« The primary index is planned in RAM: index-type flash does not work with the memory engine
+    (configuration reference, 7.0). ») : le refus de T14 était silencieux. C'est la réécriture d'un
+    placement, pas une borne : elle n'est pas dans `clamps`.
+  - Un `index_bytes` au-delà de 1 Mio est une borne, dite dans `clamps` avec sa phrase (« Primary index:
+    2,000,000 B per record copy asked, 1,048,576 B planned, the most an estimate accepts. ») ; le plus
+    grand chiffre réel par copie est de 765,6 B.
+- **pmem planifié en mémoire.** Aucune instance du catalogue n'a de pmem : un index en pmem (`index-type
+  pmem`, `sindex-type pmem`) est planifié en RAM (`ram`) dans les deux outils, le placement le plus
+  proche (mêmes entrées, sans IO disque). wellness compte les budgets des montages pmem d'index des nœuds
+  actuels dans la RAM du nœud générique qu'il envoie (`node.ram_gib`) et plus dans son stockage
+  (`node.storage_tb`), avec une note (choix de l'utilisateur).
+- **Besoins sans enregistrement maître** (des tombstones seules, par exemple) : le sizer planifie les
+  index par enregistrement et ne peut pas les représenter ; wellness lui envoie `objects` 0 et avertit
+  que ses configurations laissent ces octets de côté (choix de l'utilisateur : pas de champ de
+  tombstones dans l'API). Aucun cluster réel n'est dans ce cas.
+- **Écart qui demeure** : l'espace de l'index primaire all-flash. wellness compte les octets mesurés
+  (`index_flash_used_bytes`, environ 64 B par entrée) ; le sizer compte les blocs de sprigs du guide (T9 :
+  4 096 partitions × RF × sprigs à 50 % de remplissage, arrondis à une puissance de deux, et 10 B de RAM
+  par sprig) et l'IO de l'index. Sur les 17 instantanés réels à index flash, l'index flash du sizer fait
+  2,2 à 3,8 fois celui de wellness : +13 à +38 % de stockage, jusqu'à 687 Go de RAM de sprigs. Hors de
+  ce tour, à décider.
+- Compatibilité : aucun champ ajouté ni retiré à la requête, à la réponse ou au pré-remplissage ; un
+  appelant autre que wellness garde chacun de ses chiffres et le sens de chaque champ.
+- Effets : aucun chiffre ne change pour une requête donnée ; les deux phrases n'apparaissent qu'avec un
+  index sur flash et le moteur mémoire, ou plus de 1 Mio par copie. Côté wellness, seuls changent les
+  18 instantanés à copies mêlées : la RAM d'index que le sizer leur planifie baisse de 12 à 38 % et égale
+  celle de wellness, avec moins de nœuds là où la RAM dimensionne ; les 28 instantanés à un seul facteur
+  envoient entre 63,9 et 64 B au lieu de 64, moins de 0,1 % d'écart.

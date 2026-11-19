@@ -156,25 +156,9 @@ func serve(t *testing.T, status int, body string, check func(*http.Request)) str
 	return srv.URL
 }
 
-func TestEC2ShopReadsTheCostOfThisInstanceOnly(t *testing.T) {
-	body := `{"Prices":[{"InstanceType":"i4i.large2","Cost":9},{"InstanceType":"i4i.large","Memory":"16 GiB","Cost":0.199,"Reserved1yPrice":"0.1300"}]}`
-	base := serve(t, http.StatusOK, body, func(r *http.Request) {
-		if r.URL.Query().Get("region") != "eu-west-3" || r.URL.Query().Get("filter") == "" || r.Header.Get("Accept") != "application/json" {
-			t.Errorf("request %s", r.URL)
-		}
-	})
-	s := EC2Shop{Base: base, HTTP: http.DefaultClient}
-	if p, err := s.Fetch(context.Background(), "eu-west-3", "i4i.large"); err != nil || p != 0.199 {
-		t.Errorf("price %v, %v", p, err)
-	}
-	if _, err := s.Fetch(context.Background(), "eu-west-3", "i4i.xlarge"); err == nil {
-		t.Error("another instance's price must not be taken")
-	}
-}
-
 func TestLookupErrorsAreReported(t *testing.T) {
 	none := func(*http.Request) {}
-	down := EC2Shop{Base: serve(t, http.StatusBadGateway, "oops", none), HTTP: http.DefaultClient}
+	down := AWSPriceList{Base: serve(t, http.StatusBadGateway, "oops", none), HTTP: http.DefaultClient}
 	if _, err := down.Fetch(context.Background(), "eu-west-3", "i4i.large"); err == nil || !strings.Contains(err.Error(), "502") {
 		t.Errorf("502: err = %v", err)
 	}
@@ -203,5 +187,41 @@ func TestAzureRetailSkipsWindowsSpotAndLowPriority(t *testing.T) {
 	a := AzureRetail{Base: base, HTTP: http.DefaultClient}
 	if p, err := a.Fetch(context.Background(), "francecentral", "L16s_v3"); err != nil || p != 1.616 {
 		t.Errorf("price %v, %v", p, err)
+	}
+}
+
+// The price file of a region lists every instance type offered there, one entry each: the price is
+// that of exactly this type, and a type the region does not offer has none.
+func TestAWSPriceListReadsThisInstanceOnly(t *testing.T) {
+	body := `{"manifest":{"source":"ec2-ondemand-without-sec-sel"},"regions":{"EU (Paris)":{
+		"i8g xlarge EU Paris Linux":{"price":"0.3982000000","Instance Type":"i8g.xlarge","Operating System":"Linux"},
+		"i8g 2xlarge EU Paris Linux":{"price":"0.7964000000","Instance Type":"i8g.2xlarge","Operating System":"Linux"}}}}`
+	base := serve(t, http.StatusOK, body, func(r *http.Request) {
+		if r.URL.Path != "/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/EU (Paris)/Linux/index.json" {
+			t.Errorf("request %s", r.URL.Path)
+		}
+	})
+	a := AWSPriceList{Base: base, HTTP: http.DefaultClient}
+	if p, err := a.Fetch(context.Background(), "eu-west-3", "i8g.xlarge"); err != nil || p != 0.3982 {
+		t.Errorf("price %v, %v", p, err)
+	}
+	if _, err := a.Fetch(context.Background(), "eu-west-3", "r6id.xlarge"); err == nil {
+		t.Error("a type the region does not offer has no price")
+	}
+	if _, err := a.Fetch(context.Background(), "mars-1", "i8g.xlarge"); err == nil {
+		t.Error("a region without a price file has no price")
+	}
+}
+
+// Every AWS region of the catalog has its price file.
+func TestEveryAWSRegionHasAPriceFile(t *testing.T) {
+	p, _ := catalog.Get("aws")
+	for _, r := range p.Regions {
+		if AWSLocations[r.ID] == "" {
+			t.Errorf("%s: no price file location", r.ID)
+		}
+	}
+	if len(AWSLocations) != len(p.Regions) {
+		t.Errorf("%d locations for %d regions", len(AWSLocations), len(p.Regions))
 	}
 }

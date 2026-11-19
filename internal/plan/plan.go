@@ -198,12 +198,12 @@ func Compute(req Request, q Quoter) Response {
 		if !slices.Contains(req.Auto, p.Key) {
 			continue
 		}
-		o, ok := sizing.Recommend(p, c.demand, h, c.layout)
+		region, _ := p.Region(p.DefaultRegion)
+		o, ok := sizing.Recommend(p.Offered(region.ID), c.demand, h, c.layout)
 		if !ok {
-			resp.Notes = append(resp.Notes, fmt.Sprintf("%s: no instance type of the catalog suits this workload.", p.Label))
+			resp.Notes = append(resp.Notes, fmt.Sprintf("%s: no instance type of the catalog offered in %s suits this workload.", p.Label, region.Label))
 			continue
 		}
-		region, _ := p.Region(p.DefaultRegion)
 		resp.Rows = append(resp.Rows, c.row("auto-"+p.Key, true, p, region, o.Instance, o.Nodes))
 	}
 	for _, r := range req.Rows {
@@ -216,6 +216,10 @@ func Compute(req Request, q Quoter) Response {
 		inst, okInst := p.Instance(r.Instance)
 		if !okRegion || !okInst {
 			resp.Notes = append(resp.Notes, fmt.Sprintf("%s: unknown region %q or instance type %q ignored.", p.Label, r.Region, r.Instance))
+			continue
+		}
+		if !inst.OfferedIn(region.ID) {
+			resp.Notes = append(resp.Notes, fmt.Sprintf("%s: instance type %q is not offered in %s, ignored.", p.Label, r.Instance, region.Label))
 			continue
 		}
 		resp.Rows = append(resp.Rows, c.row(r.ID, false, p, region, inst, min(max(r.Nodes, 1), sizing.MaxNodes)))
@@ -238,14 +242,15 @@ func indexNotes(asked, w sizing.Workload) []string {
 	return nil
 }
 
-// row evaluates a configuration, with a comfortable alternative when it does not fit well. A
-// topology issue (too few nodes, uneven racks) is the node count's: no other shape solves it.
+// row evaluates a configuration, with a comfortable alternative among the types its region offers
+// when it does not fit well. A topology issue (too few nodes, uneven racks) is the node count's: no
+// other shape solves it.
 func (c computation) row(id string, auto bool, p *catalog.Provider, region catalog.Region, inst catalog.Instance, nodes int) Row {
 	r := c.evaluate(id, auto, p, region, inst, nodes)
 	if r.Fit.Status == sizing.OK {
 		return r
 	}
-	if alt, ok := sizing.Comfortable(p, c.demand, c.hyp, c.layout, nodes); ok && alt.Name != inst.Name {
+	if alt, ok := sizing.Comfortable(p.Offered(region.ID), c.demand, c.hyp, c.layout, nodes); ok && alt.Name != inst.Name {
 		a := c.evaluate(id+"/alt", false, p, region, alt, nodes)
 		r.Alternative = &a
 	}

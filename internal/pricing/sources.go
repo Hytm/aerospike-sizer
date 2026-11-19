@@ -6,37 +6,52 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
-// EC2Shop reads AWS on-demand Linux prices from ec2.shop.
-type EC2Shop struct {
+// AWSPriceList reads AWS on-demand Linux prices from the price files of the AWS pricing pages: one
+// file per region lists every instance type offered there, which ec2.shop did not for the newest
+// families in several regions (decision T19).
+type AWSPriceList struct {
 	Base string
 	HTTP *http.Client
 }
 
-// Fetch returns the price of exactly this instance type: ec2.shop filters by prefix, and another
-// size of the family must never pass for it.
-func (s EC2Shop) Fetch(ctx context.Context, region, instance string) (float64, error) {
-	body, err := get(ctx, s.HTTP, s.Base+"/?"+url.Values{"region": {region}, "filter": {instance}}.Encode())
+// AWSLocations names the sizer's AWS regions as the price files do.
+var AWSLocations = map[string]string{
+	"us-east-1": "US East (N. Virginia)", "us-west-2": "US West (Oregon)", "eu-west-1": "EU (Ireland)",
+	"eu-west-3": "EU (Paris)", "eu-central-1": "EU (Frankfurt)", "ap-southeast-1": "Asia Pacific (Singapore)",
+	"ap-southeast-3": "Asia Pacific (Jakarta)", "ap-northeast-1": "Asia Pacific (Tokyo)", "sa-east-1": "South America (Sao Paulo)",
+}
+
+// Fetch returns the price of exactly this instance type in the region's file.
+func (a AWSPriceList) Fetch(ctx context.Context, region, instance string) (float64, error) {
+	loc, ok := AWSLocations[region]
+	if !ok {
+		return 0, fmt.Errorf("aws: no price file for region %s", region)
+	}
+	body, err := get(ctx, a.HTTP, a.Base+"/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/"+url.PathEscape(loc)+"/Linux/index.json")
 	if err != nil {
 		return 0, err
 	}
 	var data struct {
-		Prices []struct {
-			InstanceType string
-			Cost         float64
-		}
+		Regions map[string]map[string]struct {
+			InstanceType string `json:"Instance Type"`
+			Price        string `json:"price"`
+		} `json:"regions"`
 	}
 	if err := json.Unmarshal(body, &data); err != nil {
 		return 0, err
 	}
-	for _, p := range data.Prices {
-		if strings.EqualFold(p.InstanceType, instance) && p.Cost > 0 {
-			return p.Cost, nil
+	for _, p := range data.Regions[loc] {
+		if p.InstanceType == instance {
+			if price, err := strconv.ParseFloat(p.Price, 64); err == nil && price > 0 {
+				return price, nil
+			}
 		}
 	}
-	return 0, fmt.Errorf("ec2.shop: no price for %s in %s", instance, region)
+	return 0, fmt.Errorf("aws: no price for %s in %s", instance, region)
 }
 
 // AzureRetail reads Azure pay-as-you-go prices from the public Retail Prices API.

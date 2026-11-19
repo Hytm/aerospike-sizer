@@ -69,8 +69,9 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   de référence, en ajoutant des nœuds à un gabarit tant que c'est moins cher qu'un gabarit plus grand,
   avec la pénalité de wellness sur les grands nombres de nœuds. Une configuration tight ou insuffisante
   reçoit une alternative confortable à nombre de nœuds égal quand un autre gabarit résout le problème
-  (pas pour un problème de topologie). Les alternatives sont recalculées à chaque requête : elles ne
-  s'accumulent plus pendant la saisie comme dans l'ancienne page.
+  (pas pour un problème de topologie). (amendé le 2026-11-19, T19 : recommandation et alternative sont
+  prises parmi les types que la région de la ligne propose.) Les alternatives sont recalculées à
+  chaque requête : elles ne s'accumulent plus pendant la saisie comme dans l'ancienne page.
 
 ## T6 — Prix live côté serveur
 
@@ -82,8 +83,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   demande, hors Spot, Low Priority et Windows), en tâche de fond : la première réponse est « pending »
   avec le prix de référence, l'interface redemande jusqu'à obtenir le prix. Cache 12 h, nouvel essai
   10 min après un échec, bouton ↻ pour forcer. Google Cloud n'a pas de source publique gratuite : prix
-  de référence.
-- Prix de référence : ceux du catalogue de wellness (US East, relevés le 2026-10-21), affichés comme tels.
+  de référence. (amendé le 2026-11-19, T19 : AWS est lu dans les fichiers de prix d'AWS, ec2.shop
+  n'ayant ni i7ie ni i8g dans plusieurs des régions du sizer.)
+- Prix de référence : ceux du catalogue de wellness (US East, relevés le 2026-10-21), affichés comme tels
+  (amendé le 2026-11-19, T19 : tous relus le 2026-11-19, identiques dans les deux catalogues).
   `SIZER_OFFLINE=1` coupe les recherches live.
 
 ## T7 — Trafic réseau
@@ -225,7 +228,8 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 - IOPS de planification : la moitié des IOPS d'écriture aléatoire publiées, soit 37 500 par disque
   (150 000 en lecture et 75 000 en écriture publiés par disque). Hypothèse prudente, faute de mesure
   ACT pour ces disques ; à revoir avec une mesure.
-- Les instances d'un fournisseur restent triées par prix : C4A et Z3 s'intercalent.
+- Les instances d'un fournisseur restent triées par prix : C4A et Z3 s'intercalent (amendé le
+  2026-11-19, T19 : à prix égal, par nom).
 - Effet sur l'exemple par défaut : GCP recommande c4a-highmem-4-lssd × 12 (7 270 $/mois) au lieu de
   z3-highmem-22-highlssd × 3 (11 782 $/mois) ; AWS et Azure inchangés.
 
@@ -277,10 +281,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
     enregistrement sur AZ^(RF−1) dans la même AZ ; l'avertissement RF > AZ parle d'AZ, pas de racks.
 - **Catalogue** : les disques Z3 font 3 000 Gio (Google publie ses SSD locaux en Gio, comme pour C4A en
   T13) → 3 221,23 Go, soit 6,9 % de stockage de plus par nœud ; région GCP par défaut europe-west1
-  (Belgique : europe-west9 n'offre ni Z3 ni C4A) ; date des prix de référence 2026-10-30 ; les IOPS
-  i4i, Z3 et Lsv3 sont celles du catalogue de wellness, dont la mesure n'est pas consignée (voir les
-  choix ouverts) ; `tag` et `live_prices` quittent le catalogue, le livre de prix dit ce qu'il lit en
-  direct.
+  (Belgique : europe-west9 n'offre ni Z3 ni C4A) ; date des prix de référence 2026-10-30 (amendé le
+  2026-11-19, T19 : 2026-11-19, tous relus) ; les IOPS i4i, Z3 et Lsv3 sont celles du catalogue de
+  wellness, dont la mesure n'est pas consignée (voir les choix ouverts) ; `tag` et `live_prices`
+  quittent le catalogue, le livre de prix dit ce qu'il lit en direct.
 - **Service** (`internal/service`) : la relève ne réutilise plus l'exemplaire en service quand une sonde
   `/health` échoue par hasard (sonde répétée trois fois ; si rien ne répond mais qu'un exemplaire est
   chargé par launchd, le déploiement refuse : `sizer uninstall` d'abord ; sinon les plists périmés sont
@@ -338,9 +342,9 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   (table « Instance store specifications » de docs.aws.amazon.com/ec2/latest/instancetypes/so.html,
   lue le 2026-11-15). Les anciens chiffres venaient du catalogue de wellness, sans mesure consignée.
 - Z3 (250 000 par disque, T15) et C4A (37 500 par disque, T13) suivaient déjà la règle. Les Lsv3 gardent
-  60 000 par disque : Microsoft ne publie qu'un chiffre d'IOPS NVMe au mieux (400 000 par disque de
-  1,92 To, file de 256), sans chiffre d'écriture, ce qui ne permet pas d'appliquer la règle ; à revoir
-  avec une mesure ACT.
+  60 000 par disque (amendé le 2026-11-19, T19 : les Lasv3 aussi, entrées au catalogue) : Microsoft ne
+  publie qu'un chiffre d'IOPS NVMe au mieux (400 000 par disque de 1,92 To, file de 256), sans chiffre
+  d'écriture, ce qui ne permet pas d'appliquer la règle ; à revoir avec une mesure ACT.
 - Effet sur l'exemple par défaut : AWS recommande toujours i4i.xlarge, mais 15 nœuds au lieu de 12 (les
   IOPS dimensionnent : 76 % de charge IOPS à 15 nœuds) ; GCP et Azure inchangés.
 - wellness préremplit désormais l'hypothèse « lectures servies par un cache » avec le `cache_read_pct`
@@ -588,8 +592,90 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
     lectures/s, où le sizer en compte 0.
   - La ligne des IOPS de planification prêtait au sizer les Azure Lasv3, que son catalogue n'a pas
     (L8s_v3 à L80s_v3 seulement) : elle les attribue au seul catalogue de wellness, tant que le sizer
-    ne les ajoute pas.
+    ne les ajoute pas (amendé le 2026-11-19, T19 : le sizer les ajoute, la ligne les attribue aux deux
+    catalogues).
   - Les deux modifications sont à reporter à l'identique dans la liste de wellness, qui reste la même
     dans les deux `CLAUDE.md`.
 - Aucune décision antérieure n'est contredite. Effet : aucun chiffre ne change ; seules les notes de
   `clamps` près d'une borne changent de texte.
+
+## T19 — Catalogue commun avec wellness, disponibilité par région, prix live AWS lus chez AWS
+
+- Demande de l'utilisateur (2026-11-19, revue croisée des deux outils ; décision T47 de wellness) : pour
+  un même cluster, les deux outils donnent les mêmes chiffres. Le sizer n'avait que 18 des 73 types de
+  wellness (i4i jusqu'à 16xlarge, Z3, Lsv3) et wellness aucune des 14 C4A du sizer : un cluster sur C4A y
+  était un matériel hors catalogue, sans prix, aux IOPS estimées (c4a-highmem-16-lssd : 400 000 au lieu
+  de 150 000, 5 nœuds au lieu de 10), et le sizer ne pouvait ni recommander ni évaluer une i8g, une C3
+  ou une L8as_v3 que wellness propose (une configuration ajoutée de ces types était ignorée comme
+  inconnue).
+- **Mêmes types.** Les deux catalogues listent les mêmes 87 types, avec les mêmes formes, IOPS de
+  planification et prix de référence à la demande, relevés dans les mêmes régions (US East) : AWS i4i
+  (large à 32xlarge), i7ie, i8g, i3en, r6id et im4gn (49) ; Google C4A, C3 et Z3 (26) ; Azure Lsv3 et
+  Lasv3 (12). Le sizer gagne 55 types, wellness les 14 C4A.
+- **IOPS de planification** : la moitié des IOPS d'écriture aléatoire publiées pour tout type AWS et
+  Google (règle T13, étendue à AWS par T16), 60 000 par disque pour les Lsv3 et les Lasv3 (T16).
+  Chiffres publiés, relus le 2026-11-19 : tables « instance store » d'AWS (stockage optimisé pour i4i,
+  i7ie, i8g, i3en et im4gn, mémoire optimisée pour r6id) ; tables « Local SSD » de Google, Titanium SSD
+  pour C4A et Z3, NVMe par nombre de disques pour C3 (90 000, 180 000, 360 000, 360 000, 800 000 et
+  1 600 000 pour 1, 2, 4, 8, 16 et 32 disques). Les tests des deux outils tiennent la même table. Une
+  IOPS de planification peut être fractionnaire, moitié d'un chiffre impair (i7ie.large 21 666,5 ;
+  r6id.large 8 385,5).
+- **Deux formats, un test de parité.** Le sizer garde son champ `iops` (chiffre de planification, sens
+  inchangé dans l'API), wellness son `write_iops` (chiffre publié). Un test de chaque côté lit le
+  `catalog.json` de l'autre dépôt, à côté dans `~/work` ou là où le nomme `WELLNESS_CATALOG` (ici) ou
+  `SIZER_CATALOG` (chez wellness), et exige autant de types et, pour chacun, le même fournisseur, la
+  même famille, la même architecture, la même forme, le même prix de référence et la même IOPS de
+  planification ; il est sauté sans l'autre dépôt. Il lit la branche extraite de l'autre dépôt : un
+  changement de catalogue se fait dans les deux avant que l'un ou l'autre `make ci` passe.
+- **Prix de référence** : tous relus le 2026-11-19 (`PricesAsOf`) et inchangés : fichiers de prix d'AWS
+  (us-east-1), API Retail Prices d'Azure (eastus, Linux à la demande), gcloud-compute.com (us-east1).
+  Les Z3 prennent les prix au millionième de wellness (1,151931 $/h au lieu de 1,1519 ; moins de 0,03 $
+  par mois et par nœud). Les C4A gardent les prix calculés de T13, à 0,0007 $/h au plus des prix publiés
+  (c4a-standard-72-lssd : 4,2184 au lieu de 4,2191), le même chiffre dans les deux outils.
+- **Famille, architecture, régions.** Chaque type porte `family`, `arch` (`arm64` pour i8g, im4gn et
+  C4A, `x86_64` sinon) et `regions`, les régions de la liste du fournisseur qui le proposent : fichiers
+  de prix d'AWS de chaque région, API Retail Prices d'Azure, tables de régions de gcloud-compute.com,
+  lus type par type le 2026-11-19. Ne sont pas proposés : r6id en eu-west-3, ap-southeast-3 et
+  sa-east-1 ; im4gn en ap-southeast-3 et sa-east-1 ; i8g.48xlarge en eu-central-1 ; C3 en
+  asia-southeast2 ; Z3 en asia-southeast2 et southamerica-east1 ; Lasv3 en germanywestcentral. Les
+  listes sont statiques et se relisent avec les prix ; la capacité par zone n'est pas modélisée.
+- **Comportement par région.** La recommandation et l'alternative confortable ne prennent que les types
+  proposés dans la région de la ligne (T5). Une configuration ajoutée d'un type que sa région ne propose
+  pas est ignorée avec une note, comme un type inconnu (« AWS: instance type "r6id.xlarge" is not
+  offered in eu-west-3 · Paris, ignored. ») ; la note d'un fournisseur sans type adapté nomme la région
+  (« AWS: no instance type of the catalog offered in eu-west-3 · Paris suits this workload. »). Le
+  formulaire d'ajout ne liste que les types de la région choisie, groupés par famille de la moins chère
+  à la plus chère, et garde le type choisi quand la nouvelle région le propose ; la ligne d'une
+  configuration et l'option d'un type Arm (AWS Graviton, Google Axion) finissent par « arm64 ».
+- **Ordre du catalogue** : prix de référence, puis nom à prix égal (i4i.24xlarge avant i8g.24xlarge,
+  toutes deux à 8,2368 $/h), pour une recommandation stable.
+- **Prix live AWS** : les fichiers publics des pages de tarifs d'AWS
+  (`b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/<lieu>/Linux/index.json`,
+  un par région, tous les types qu'elle propose, Linux à la demande) remplacent ec2.shop (choix de
+  l'utilisateur), qui n'a ni i7ie ni i8g en eu-west-1, eu-west-3 (région AWS par défaut), ap-southeast-1,
+  ap-southeast-3 et sa-east-1, ni i8g en ap-northeast-1 : ces configurations seraient restées au prix de
+  référence. Même correspondance exacte du type ; ce sont les fichiers d'où wellness tire ses prix (sa
+  décision T23). Ils ne sont pas une API documentée : si leur format change, la recherche échoue et la
+  ligne garde le prix de référence, avec un avertissement dans le journal ; un test fixe leur lecture.
+  Exemple : i8g.xlarge en eu-west-3, 0,3982 $/h lu en direct au lieu des 0,3432 $/h de référence.
+- **API** compatible, chaque changement est un champ ajouté : tout objet d'instance gagne `family`,
+  `arch` et `regions` (`providers[].instances[]` de `/api/defaults`, `rows[].instance` et
+  `rows[].alternative.instance` de `/api/plan`) ; `instance.iops` reste le chiffre de planification, la
+  requête ne change pas. wellness n'envoie aucune ligne et ne reçoit donc jamais la note d'un type non
+  proposé ; il lit désormais `instance.arch` (vide avec un sizer plus ancien). La région des lignes
+  automatiques quand wellness appelle le sizer reste la région par défaut de chaque fournisseur (choix de
+  l'utilisateur : un tour suivant aligne la règle de recommandation). Déployer le sizer d'abord, puis
+  wellness ; les deux ordres sont sûrs.
+- Effet sur l'exemple par défaut (prix de référence, calcul seul) : AWS i8g.xlarge × 12 (3 006 $/mois)
+  au lieu de i4i.xlarge × 15 (3 756) ; Google c3-standard-22-lssd × 3 (2 788) au lieu de
+  c4a-highmem-4-lssd × 12 (2 605 : la pénalité par nœud préfère 3 nœuds) ; Azure L8as_v3 × 9 (4 100) au
+  lieu de L8s_v3 × 9 (4 573). Nœud générique (6) et notes inchangés. Une ligne tight de 3 × i4i.2xlarge
+  en eu-west-3 reçoit l'alternative i3en.3xlarge, moins chère que i4i.4xlarge.
+- Effet sur les 294 clusters réels analysés par wellness (les requêtes qu'il envoie, rejouées dans les
+  deux versions, prix de référence, chiffres agrégés) : la configuration AWS change de type pour 215
+  (famille i8g pour 142, i3en 19, i7ie 8 ; i4i reste la famille de 125), calcul total −15,2 % ; Azure
+  passe aux Lasv3 de même forme pour les 294 (−10,3 %) ; Google change pour 41 (C3 au lieu de C4A,
+  +1,5 % de calcul, la pénalité par nœud). Le sizer et wellness proposent désormais le même type pour
+  28 clusters sur AWS (6 avant), 98 sur Google (18) et 216 sur Azure (0) : le reste tient aux règles de
+  choix (wellness classe au prix 1 an en US East, sans la marge de 85 % ni la pénalité par nœud du
+  sizer ; le sizer recommande dans sa région par défaut), pas au catalogue.

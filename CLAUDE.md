@@ -58,8 +58,10 @@ locale (`make ci`), et on n'en ajoute pas.
     64 B), chaque index placé d'un bloc là où sont la plupart de ses octets, jamais sur flash avec le
     moteur mémoire, pmem planifié en mémoire (sizer T18 ; wellness T46) ;
   - IOPS de planification : la moitié des IOPS d'écriture aléatoire publiées (règle T13 du sizer) ;
-    60 000 par disque pour les Azure Lsv3, et pour les Lasv3 que seul le catalogue de wellness porte
-    (sizer T13, T15, T16 ; wellness T43, T44) ;
+    60 000 par disque pour les Azure Lsv3 et Lasv3 (sizer T13, T15, T16, T19 ; wellness T43, T44, T47) ;
+  - un même catalogue dans les deux outils : mêmes types et mêmes chiffres (gabarit, IOPS de
+    planification, prix de référence lus en US East), tenus égaux par un test de parité de chaque côté
+    (sizer T19 ; wellness T47) ;
   - usage affiché : part de la capacité brute, RAM hors réserve OS, tous les nœuds en service (sizer T5 ;
     wellness T22) ;
   - arrondi par excès des ratios à 10⁻¹² près (sizer T18 ; wellness T46) ;

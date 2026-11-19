@@ -4,6 +4,7 @@ package catalog
 import (
 	_ "embed"
 	"encoding/json"
+	"slices"
 )
 
 // GiB is a gibibyte: memory is counted in binary units, as providers publish it.
@@ -16,16 +17,22 @@ const HoursPerMonth = 730
 // Instance is a machine type with local NVMe suitable for Aerospike.
 type Instance struct {
 	Name    string  `json:"name"`
+	Family  string  `json:"family"` // i4i, i8g, c4a, z3, Lsv3… as aerospike-wellness names them
+	Arch    string  `json:"arch"`   // x86_64 or arm64
 	VCPU    int     `json:"vcpu"`
 	RAMGiB  float64 `json:"ram_gib"`
 	Drives  int     `json:"drives"`
 	DriveGB float64 `json:"drive_gb"` // decimal GB (a drive published in GiB is converted)
-	// IOPS is the planning figure per node, in 4 KiB blocks: the sustained numbers of the
-	// aerospike-wellness catalog for i4i and Lsv3 (their measurement is not recorded) and, for the
-	// Google drives, half the published random-write IOPS (decision T13; T15 for Z3).
-	IOPS      float64 `json:"iops"`
-	PriceHour float64 `json:"price_hour"` // reference on-demand Linux price in PricesRegion
+	// IOPS is the planning figure per node, in 4 KiB blocks: half the 100 % random-write IOPS the
+	// provider publishes for the local drives of every AWS and Google type (decision T13, extended
+	// to AWS by T16), 60,000 per disk for Azure, which publishes no write figure (T16).
+	IOPS      float64  `json:"iops"`
+	PriceHour float64  `json:"price_hour"` // reference on-demand Linux price in PricesRegion
+	Regions   []string `json:"regions"`    // the provider's regions that offer the type (T19)
 }
+
+// OfferedIn tells whether the type is offered in a region of its provider.
+func (i Instance) OfferedIn(region string) bool { return slices.Contains(i.Regions, region) }
 
 // RAMBytes returns the memory in bytes.
 func (i Instance) RAMBytes() float64 { return i.RAMGiB * GiB }
@@ -59,6 +66,17 @@ func (p *Provider) Region(id string) (Region, bool) {
 	return Region{}, false
 }
 
+// Offered returns the provider's instance types offered in a region, cheapest first.
+func (p *Provider) Offered(region string) []Instance {
+	var out []Instance
+	for _, i := range p.Instances {
+		if i.OfferedIn(region) {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
 // Instance returns an instance type of the provider.
 func (p *Provider) Instance(name string) (Instance, bool) {
 	for _, i := range p.Instances {
@@ -75,8 +93,9 @@ var catalogJSON []byte
 // Providers is the embedded catalog, in display order.
 var Providers = mustProviders()
 
-// PricesAsOf is the date the latest reference prices were read (decisions T6 and T13).
-const PricesAsOf = "2026-10-30"
+// PricesAsOf is the date the reference prices were read: every one of them was checked against the
+// providers' published prices then (decisions T6, T13 and T19).
+const PricesAsOf = "2026-11-19"
 
 // PricesRegion is the region whose public prices the reference holds, per provider (US East).
 var PricesRegion = map[string]string{"aws": "us-east-1", "azure": "eastus", "gcp": "us-east1"}

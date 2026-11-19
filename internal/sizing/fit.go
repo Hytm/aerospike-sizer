@@ -103,13 +103,13 @@ type Option struct {
 // cluster (the aerospike-wellness penalty).
 const nodePenaltyPer = 50
 
-// Recommend returns the cheapest comfortable configuration of the provider for the demand
-// (reference prices, every load under TightLoad), else the cheapest one that holds. Nodes are added
-// to a shape while that is cheaper than a larger one, with a penalty on large node counts. ok is
-// false when no instance type suits the demand.
-func Recommend(p *catalog.Provider, d Amounts, h Hypotheses, l Layout) (Option, bool) {
+// Recommend returns the cheapest comfortable configuration of the instance types given, a provider's
+// in a region, cheapest first (reference prices, every load under TightLoad), else the cheapest one
+// that holds. Nodes are added to a shape while that is cheaper than a larger one, with a penalty on
+// large node counts. ok is false when no instance type suits the demand.
+func Recommend(insts []catalog.Instance, d Amounts, h Hypotheses, l Layout) (Option, bool) {
 	var comfortable, holding candidate
-	for _, inst := range p.Instances {
+	for _, inst := range insts {
 		s := Size(d, OfInstance(inst), h, l)
 		if s.Nodes == 0 {
 			continue
@@ -159,11 +159,11 @@ func comfortableNodes(d, node Amounts, h Hypotheses, l Layout) (int, bool) {
 	return 0, false
 }
 
-// Comfortable returns the cheapest instance type of the provider that fits comfortably with the
-// given node count (every load under TightLoad, the topology rules met): the catalog lists the
-// instances of a provider by price.
-func Comfortable(p *catalog.Provider, d Amounts, h Hypotheses, l Layout, nodes int) (catalog.Instance, bool) {
-	for _, inst := range p.Instances {
+// Comfortable returns the cheapest of the instance types given, a provider's in a region listed by
+// price, that fits comfortably with the given node count (every load under TightLoad, the topology
+// rules met).
+func Comfortable(insts []catalog.Instance, d Amounts, h Hypotheses, l Layout, nodes int) (catalog.Instance, bool) {
+	for _, inst := range insts {
 		if Evaluate(d, OfInstance(inst), nodes, h, l).Status == OK {
 			return inst, true
 		}

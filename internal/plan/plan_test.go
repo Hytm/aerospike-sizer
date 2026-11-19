@@ -143,11 +143,11 @@ func TestTightRowGetsAComfortableAlternative(t *testing.T) {
 	if r.Fit.Status != sizing.Tight || !near(r.Fit.Load[sizing.ByRAM], 0.961, 0.001) || r.Alternative == nil {
 		t.Fatalf("row = %+v", r)
 	}
-	if r.Alternative.ID != "r1/alt" || r.Alternative.Instance.Name != "i4i.4xlarge" || r.Alternative.Nodes != 3 || r.Alternative.Fit.Status != sizing.OK {
+	if r.Alternative.ID != "r1/alt" || r.Alternative.Instance.Name != "i3en.3xlarge" || r.Alternative.Nodes != 3 || r.Alternative.Fit.Status != sizing.OK {
 		t.Errorf("alternative = %+v", r.Alternative)
 	}
 	// A pending price on the alternative alone keeps the answer pending.
-	resp = Compute(req, referenceQuoter{pendingFor: "i4i.4xlarge"})
+	resp = Compute(req, referenceQuoter{pendingFor: "i3en.3xlarge"})
 	if r := resp.Rows[0]; !resp.Pending || r.Price.Source != pricing.Live || r.Alternative.Price.Source != pricing.Pending {
 		t.Errorf("pending %v, row price %+v, alternative price %+v", resp.Pending, r.Price, r.Alternative.Price)
 	}
@@ -187,7 +187,7 @@ func TestOversizedWorkloadLeavesANotePerProvider(t *testing.T) {
 	req := DefaultRequest()
 	req.Workload.Objects = 1e14 // 16 PB of primary index
 	resp := Compute(req, referenceQuoter{})
-	if resp.Generic.Nodes != 0 || len(resp.Rows) != 0 || len(resp.Notes) != 3 || resp.Notes[0] != "AWS: no instance type of the catalog suits this workload." {
+	if resp.Generic.Nodes != 0 || len(resp.Rows) != 0 || len(resp.Notes) != 3 || resp.Notes[0] != "AWS: no instance type of the catalog offered in eu-west-3 · Paris suits this workload." {
 		t.Errorf("generic nodes %d, rows %d, notes %q", resp.Generic.Nodes, len(resp.Rows), resp.Notes)
 	}
 }
@@ -249,6 +249,45 @@ func TestUnknownRowsAreIgnoredWithANote(t *testing.T) {
 	}
 	if !resp.Pending {
 		t.Error("pending prices must be reported")
+	}
+}
+
+// A type the region does not offer is ignored with a note, as an unknown one is, and never offered
+// as a recommendation or an alternative there.
+func TestTypesNotOfferedInTheRegionAreIgnored(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = []string{"aws"}
+	req.Rows = []RowRequest{
+		{ID: "paris", Provider: "aws", Region: "eu-west-3", Instance: "r6id.xlarge", Nodes: 3},
+		{ID: "ireland", Provider: "aws", Region: "eu-west-1", Instance: "r6id.xlarge", Nodes: 3},
+	}
+	resp := Compute(req, referenceQuoter{})
+	want := `AWS: instance type "r6id.xlarge" is not offered in eu-west-3 · Paris, ignored.`
+	if len(resp.Rows) != 2 || resp.Rows[1].ID != "ireland" || len(resp.Notes) != 1 || resp.Notes[0] != want {
+		t.Fatalf("rows %d, notes %q", len(resp.Rows), resp.Notes)
+	}
+	for _, r := range resp.Rows {
+		for _, c := range []*Row{&r, r.Alternative} {
+			if c != nil && !c.Instance.OfferedIn(c.Region.ID) {
+				t.Errorf("%s: %s is not offered in %s", c.ID, c.Instance.Name, c.Region.ID)
+			}
+		}
+	}
+}
+
+// The recommendation is made among the types the row's region offers (T19): for a small workload
+// the whole AWS catalog would give r6id.large × 3, a type Paris does not offer.
+func TestRecommendationTakesOnlyTypesTheRegionOffers(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = []string{"aws"}
+	req.Workload.Objects, req.Workload.ReadsPerSec, req.Workload.WritesPerSec = 1e6, 1000, 100
+	resp := Compute(req, referenceQuoter{})
+	if len(resp.Rows) != 1 || len(resp.Notes) != 0 {
+		t.Fatalf("rows %+v, notes %q", resp.Rows, resp.Notes)
+	}
+	r := resp.Rows[0]
+	if r.Region.ID != "eu-west-3" || !r.Instance.OfferedIn(r.Region.ID) || r.Instance.Name != "i8g.large" || r.Nodes != 3 {
+		t.Errorf("recommendation = %s × %d in %s; want i8g.large × 3 in eu-west-3", r.Instance.Name, r.Nodes, r.Region.ID)
 	}
 }
 

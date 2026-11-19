@@ -46,8 +46,10 @@ locale (`make ci`), et on n'en ajoute pas.
     wellness T44) ;
   - débit : une sous-transaction batch compte comme une transaction (sizer T18 ; wellness T44) ;
   - IO disque en blocs de 4 Kio : lecture de ⌈taille stockée ÷ 4 Kio⌉ blocs sur les seules lectures qui
-    trouvent un enregistrement, hors cache, toutes les lectures comptant pour le CPU et le réseau ;
-    écriture des octets de chaque copie × défragmentation (sizer T12, T17 ; wellness T31, T34) ;
+    trouvent un enregistrement, hors cache, aucun bloc sans enregistrement ou avec des enregistrements de
+    0 octet (moteur device, objets > 0, taille stockée > 0), toutes les lectures comptant pour le CPU et
+    le réseau ; écriture des octets de chaque copie × défragmentation (sizer T12, T17, T18 ; wellness
+    T31, T34, T46) ;
   - cache de lecture nul par défaut, prérempli avec le `cache_read_pct` mesuré, au dixième (sizer T15,
     T16 ; wellness T43) ;
   - enregistrements en mémoire (7.0+) au plafond de stockage, index au plafond RAM (sizer T15 ;
@@ -56,7 +58,8 @@ locale (`make ci`), et on n'en ajoute pas.
     64 B), chaque index placé d'un bloc là où sont la plupart de ses octets, jamais sur flash avec le
     moteur mémoire, pmem planifié en mémoire (sizer T18 ; wellness T46) ;
   - IOPS de planification : la moitié des IOPS d'écriture aléatoire publiées (règle T13 du sizer) ;
-    60 000 par disque pour les Azure Lsv3 et Lasv3 (sizer T13, T15, T16 ; wellness T43, T44) ;
+    60 000 par disque pour les Azure Lsv3, et pour les Lasv3 que seul le catalogue de wellness porte
+    (sizer T13, T15, T16 ; wellness T43, T44) ;
   - usage affiché : part de la capacité brute, RAM hors réserve OS, tous les nœuds en service (sizer T5 ;
     wellness T22) ;
   - arrondi par excès des ratios à 10⁻¹² près (sizer T18 ; wellness T46) ;

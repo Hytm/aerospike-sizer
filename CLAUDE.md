@@ -57,6 +57,9 @@ locale (`make ci`), et on n'en ajoute pas.
   - index primaire : octets par copie effectifs (tous ses octets ÷ objets maîtres × RF, sans plancher de
     64 B), chaque index placé d'un bloc là où sont la plupart de ses octets, jamais sur flash avec le
     moteur mémoire, pmem planifié en mémoire (sizer T18 ; wellness T46) ;
+  - index primaire sur flash planifié selon le guide : blocs de sprigs de 4 Kio remplis à 50 %, sprigs par
+    partition en puissance de deux de 256 à 2²⁸ tirés des enregistrements maîtres à l'horizon au plus
+    grand nombre de copies, 10 B de RAM par sprig, IO de l'index (sizer T9, T20 ; wellness T48) ;
   - IOPS de planification : la moitié des IOPS d'écriture aléatoire publiées (règle T13 du sizer) ;
     60 000 par disque pour les Azure Lsv3 et Lasv3 (sizer T13, T15, T16, T19 ; wellness T43, T44, T47) ;
   - un même catalogue dans les deux outils : mêmes types et mêmes chiffres (gabarit, IOPS de

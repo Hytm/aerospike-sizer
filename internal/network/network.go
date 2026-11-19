@@ -4,7 +4,9 @@ package network
 
 import (
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/Hytm/aerospike-sizer/internal/catalog"
@@ -86,36 +88,47 @@ const (
 
 // Normalize clamps the settings and drops the options their prerequisites rule out.
 func (s Settings) Normalize() Settings {
+	n, _ := s.Bounded()
+	return n
+}
+
+// Bounded is Normalize, with the numbers it moved into their bounds (sizing.Clamp); options their
+// prerequisites rule out, and modes it does not know, are no clamp.
+func (s Settings) Bounded() (Settings, []sizing.Clamp) {
+	var b sizing.Bounds
 	if s.Mode != MultiRegion {
 		s.Mode = MultiAZ
 	}
-	s.AZs = min(max(s.AZs, 1), MaxAZs)
-	s.Regions = min(max(s.Regions, 2), MaxRegions)
+	b.Int("network.azs", &s.AZs, 1, MaxAZs)
+	b.Int("network.regions", &s.Regions, 2, MaxRegions)
 	if s.ClientPlacement != Single {
 		s.ClientPlacement = Distributed
 	}
 	if s.XDRTopology != Hub {
 		s.XDRTopology = Mesh
 	}
-	s.ResidualRead = min(max(s.ResidualRead, 0), 1)
-	s.CompressionGain = min(max(s.CompressionGain, 0), 0.9)
+	b.Float("network.residual_read", &s.ResidualRead, 0, 1)
+	b.Float("network.compression_gain", &s.CompressionGain, 0, 0.9)
 	if s.AZs == 1 {
 		s.RackAware = false
 	}
 	if !s.RackAware {
 		s.ActiveRack, s.LocalRead = false, false
 	}
-	s.Rates = normalizeRates(s.Rates, DefaultRates())
-	s.RegionRates = normalizeRates(s.RegionRates, DefaultRegionRates())
-	return s
+	s.Rates = normalizeRates(&b, "network.rates", s.Rates, DefaultRates())
+	s.RegionRates = normalizeRates(&b, "network.region_rates", s.RegionRates, DefaultRegionRates())
+	return s, b.Clamps
 }
 
 // normalizeRates keeps the given rates of the known providers, never negative, and the defaults
-// for the others.
-func normalizeRates(given, defaults map[string]float64) map[string]float64 {
-	for k, v := range given {
+// for the others; field.<provider> names a rate it bounds. The providers go in their order, so that
+// the clamps do too.
+func normalizeRates(b *sizing.Bounds, field string, given, defaults map[string]float64) map[string]float64 {
+	for _, k := range slices.Sorted(maps.Keys(given)) {
 		if _, ok := defaults[k]; ok {
-			defaults[k] = max(v, 0)
+			v := given[k]
+			b.Float(field+"."+k, &v, 0, math.MaxFloat64)
+			defaults[k] = v
 		}
 	}
 	return defaults

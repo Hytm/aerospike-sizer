@@ -2,6 +2,7 @@ package plan
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -246,9 +247,20 @@ func TestSettingsComeBackNormalized(t *testing.T) {
 }
 
 func TestNodeAmountsAreBounded(t *testing.T) {
-	a := Node{VCPU: -1, RAMGiB: 1e30, StorageTB: 1e30, IOPS: 1e30}.Amounts()
+	n := Node{VCPU: -1, RAMGiB: 1e30, StorageTB: 1e30, IOPS: 1e30}
+	a := n.Amounts()
 	if a.CPU != 0 || a.RAM != MaxNodeRAMGiB*catalog.GiB || a.Storage != MaxNodeStorageTB*1e12 || a.IOPS != MaxNodeIOPS {
 		t.Errorf("amounts = %+v", a)
+	}
+	want := []sizing.Clamp{
+		{Field: "node.vcpu", Given: -1, Used: 0}, {Field: "node.ram_gib", Given: 1e30, Used: MaxNodeRAMGiB},
+		{Field: "node.storage_tb", Given: 1e30, Used: MaxNodeStorageTB}, {Field: "node.iops", Given: 1e30, Used: MaxNodeIOPS},
+	}
+	if _, clamps := n.Bounded(); !slices.Equal(clamps, want) {
+		t.Errorf("clamps = %+v", clamps)
+	}
+	if _, clamps := DefaultRequest().Node.Bounded(); len(clamps) != 0 {
+		t.Errorf("default node clamps = %+v", clamps)
 	}
 }
 

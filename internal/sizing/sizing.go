@@ -61,13 +61,49 @@ const (
 	MaxSindexEntries = 1e9
 )
 
+// Clamp is an input an estimate moved into its bounds: the value given and the one used. Field is
+// its path in the request (workload.object_size, hypotheses.growth…).
+type Clamp struct {
+	Field string  `json:"field"`
+	Given float64 `json:"given"`
+	Used  float64 `json:"used"`
+}
+
+// Bounds moves inputs into their range and keeps the ones it moved, so that no bound applies
+// silently: the answer tells each (plan.Response.Clamps).
+type Bounds struct{ Clamps []Clamp }
+
+// Float bounds *v to [lo, hi].
+func (b *Bounds) Float(field string, v *float64, lo, hi float64) {
+	if used := clamp(*v, lo, hi); used != *v {
+		b.Clamps = append(b.Clamps, Clamp{Field: field, Given: *v, Used: used})
+		*v = used
+	}
+}
+
+// Int bounds *v to [lo, hi].
+func (b *Bounds) Int(field string, v *int, lo, hi int) {
+	if used := min(max(*v, lo), hi); used != *v {
+		b.Clamps = append(b.Clamps, Clamp{Field: field, Given: float64(*v), Used: float64(used)})
+		*v = used
+	}
+}
+
 // Normalize clamps the workload to meaningful values and drops the placements its engine rules out.
 func (w Workload) Normalize() Workload {
-	w.ObjectSize = clamp(w.ObjectSize, 0, MaxObjectSize)
-	w.Objects = clamp(w.Objects, 0, MaxObjects)
-	w.ReadsPerSec = clamp(w.ReadsPerSec, 0, MaxRate)
-	w.WritesPerSec = clamp(w.WritesPerSec, 0, MaxRate)
-	w.RF = min(max(w.RF, 1), MaxRF)
+	n, _ := w.Bounded()
+	return n
+}
+
+// Bounded is Normalize, with the inputs it moved into their bounds (Clamp). Placements the engine
+// rules out, and a share of the reads found left out (every read), are no clamp.
+func (w Workload) Bounded() (Workload, []Clamp) {
+	var b Bounds
+	b.Float("workload.object_size", &w.ObjectSize, 0, MaxObjectSize)
+	b.Float("workload.objects", &w.Objects, 0, MaxObjects)
+	b.Float("workload.reads_per_sec", &w.ReadsPerSec, 0, MaxRate)
+	b.Float("workload.writes_per_sec", &w.WritesPerSec, 0, MaxRate)
+	b.Int("workload.rf", &w.RF, 1, MaxRF)
 	if w.Engine != Memory {
 		w.Engine = Device
 		w.Persist = false
@@ -79,11 +115,15 @@ func (w Workload) Normalize() Workload {
 	if w.SindexOn != OnFlash {
 		w.SindexOn = InRAM
 	}
-	w.SindexEntries = clamp(w.SindexEntries, 0, MaxSindexEntries)
+	b.Float("workload.sindex_entries", &w.SindexEntries, 0, MaxSindexEntries)
 	// A fresh value: the caller's own is left alone, and the answer says which share was used.
-	found := w.FoundShare()
+	found := 1.0
+	if w.ReadsFound != nil {
+		found = *w.ReadsFound
+		b.Float("workload.reads_found", &found, 0, 1)
+	}
 	w.ReadsFound = &found
-	return w
+	return w, b.Clamps
 }
 
 // FoundShare returns the share of the reads that find a record, within [0, 1]: 1 when not given.
@@ -189,31 +229,40 @@ func DefaultHypotheses() Hypotheses {
 
 // Normalize clamps the hypotheses to meaningful values.
 func (h Hypotheses) Normalize() Hypotheses {
-	h.Growth = clamp(h.Growth, 0, MaxGrowth)
-	h.IndexBytes = clamp(h.IndexBytes, 0, MaxBytesPerEntry)
-	h.RecordOverhead = clamp(h.RecordOverhead, 0, MaxObjectSize)
-	h.WriteOverhead = clamp(h.WriteOverhead, 0, MaxWriteOverhead)
-	h.Compression = ceiling(h.Compression)
-	h.DefragMult = clamp(h.DefragMult, 1, MaxDefragMult)
-	h.CacheHit = clamp(h.CacheHit, 0, 1)
-	h.StorageFill = ceiling(h.StorageFill)
-	h.RAMFill = ceiling(h.RAMFill)
-	h.IOTarget = ceiling(h.IOTarget)
-	h.CPUTarget = ceiling(h.CPUTarget)
-	h.OpsPerVCPU = clamp(h.OpsPerVCPU, 100, MaxOpsPerVCPU)
-	h.OSReserveGiB = clamp(h.OSReserveGiB, 0, MaxOSReserveGiB)
-	h.OSReservePct = clamp(h.OSReservePct, 0, 0.9)
+	n, _ := h.Bounded()
+	return n
+}
+
+// Bounded is Normalize, with the hypotheses it moved into their bounds (Clamp). A loss it does not
+// know, read as the loss of a node, is no clamp.
+func (h Hypotheses) Bounded() (Hypotheses, []Clamp) {
+	var b Bounds
+	b.Float("hypotheses.growth", &h.Growth, 0, MaxGrowth)
+	b.Float("hypotheses.index_bytes", &h.IndexBytes, 0, MaxBytesPerEntry)
+	b.Float("hypotheses.record_overhead", &h.RecordOverhead, 0, MaxObjectSize)
+	b.Float("hypotheses.write_overhead", &h.WriteOverhead, 0, MaxWriteOverhead)
+	b.Float("hypotheses.compression", &h.Compression, MinCeiling, 1)
+	b.Float("hypotheses.defrag_mult", &h.DefragMult, 1, MaxDefragMult)
+	b.Float("hypotheses.cache_hit", &h.CacheHit, 0, 1)
+	b.Float("hypotheses.storage_fill", &h.StorageFill, MinCeiling, 1)
+	b.Float("hypotheses.ram_fill", &h.RAMFill, MinCeiling, 1)
+	b.Float("hypotheses.io_target", &h.IOTarget, MinCeiling, 1)
+	b.Float("hypotheses.cpu_target", &h.CPUTarget, MinCeiling, 1)
+	b.Float("hypotheses.ops_per_vcpu", &h.OpsPerVCPU, 100, MaxOpsPerVCPU)
+	b.Float("hypotheses.os_reserve_gib", &h.OSReserveGiB, 0, MaxOSReserveGiB)
+	b.Float("hypotheses.os_reserve_pct", &h.OSReservePct, 0, 0.9)
 	if h.Loss != NoLoss && h.Loss != RackLoss {
 		h.Loss = NodeLoss
 	}
-	h.SprigFill = ceiling(h.SprigFill)
-	h.SprigRAMBytes = clamp(h.SprigRAMBytes, 0, MaxBytesPerEntry)
-	h.SindexEntryBytes = clamp(h.SindexEntryBytes, 0, MaxBytesPerEntry)
-	h.SindexSparseness = clamp(h.SindexSparseness, 1, MaxSparseness)
-	return h
+	b.Float("hypotheses.sprig_fill", &h.SprigFill, MinCeiling, 1)
+	b.Float("hypotheses.sprig_ram_bytes", &h.SprigRAMBytes, 0, MaxBytesPerEntry)
+	b.Float("hypotheses.sindex_entry_bytes", &h.SindexEntryBytes, 0, MaxBytesPerEntry)
+	b.Float("hypotheses.sindex_sparseness", &h.SindexSparseness, 1, MaxSparseness)
+	return h, b.Clamps
 }
 
-func ceiling(v float64) float64 { return clamp(v, 0.05, 1) }
+// MinCeiling is the lowest ceiling, fill or compression share: 5 % of a resource stays usable.
+const MinCeiling = 0.05
 
 // Constraint names what drives a node count.
 type Constraint string

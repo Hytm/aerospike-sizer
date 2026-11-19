@@ -2,6 +2,7 @@ package sizing
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -619,5 +620,29 @@ func TestMemoryRecordsArePlannedAtTheStorageFill(t *testing.T) {
 	onDevice := Size(Detailed(big, h).Amounts, Amounts{Storage: 64 * catalog.GiB, RAM: 1e15, CPU: 64, IOPS: 1e6}, h, Layout{RF: 1, AZs: 1, Racks: 1})
 	if inMemory.Nodes != onDevice.Nodes || inMemory.Binding != ByRAM || onDevice.Binding != ByStorage {
 		t.Errorf("in memory %+v, on device %+v", inMemory, onDevice)
+	}
+}
+
+// Every bound Normalize applies is told, with the value given and the one used; what is within
+// its bounds, a share left out and a placement the engine rules out are not.
+func TestBoundedTellsEveryClamp(t *testing.T) {
+	_, clamps := Workload{ObjectSize: 98500039, Objects: -1, ReadsPerSec: 2e9, WritesPerSec: 10, RF: 10, Engine: Memory, IndexOn: OnFlash, SindexEntries: 2e9, ReadsFound: share(1.5)}.Bounded()
+	want := []Clamp{
+		{"workload.object_size", 98500039, MaxObjectSize}, {"workload.objects", -1, 0}, {"workload.reads_per_sec", 2e9, MaxRate},
+		{"workload.rf", 10, MaxRF}, {"workload.sindex_entries", 2e9, MaxSindexEntries}, {"workload.reads_found", 1.5, 1},
+	}
+	if !slices.Equal(clamps, want) {
+		t.Errorf("workload clamps = %+v", clamps)
+	}
+	if _, clamps := (Workload{ObjectSize: 1024, Objects: 5e8, RF: 2, SindexEntries: 25000}).Bounded(); len(clamps) != 0 {
+		t.Errorf("clamps within the bounds = %+v", clamps)
+	}
+	h := DefaultHypotheses()
+	h.Growth, h.StorageFill, h.Loss = 200, 0.01, "all"
+	if _, clamps := h.Bounded(); !slices.Equal(clamps, []Clamp{{"hypotheses.growth", 200, MaxGrowth}, {"hypotheses.storage_fill", 0.01, MinCeiling}}) {
+		t.Errorf("hypotheses clamps = %+v", clamps)
+	}
+	if _, clamps := DefaultHypotheses().Bounded(); len(clamps) != 0 {
+		t.Errorf("default hypotheses clamps = %+v", clamps)
 	}
 }

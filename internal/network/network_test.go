@@ -2,6 +2,7 @@ package network
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -153,5 +154,25 @@ func TestNormalizeDropsWhatPrerequisitesRuleOut(t *testing.T) {
 	}
 	if l := settings(func(s *Settings) { s.Mode = MultiRegion }).Layout(2); l.Racks != 1 || l.AZs != 1 {
 		t.Errorf("XDR layout = %+v", l)
+	}
+}
+
+// The numbers moved into their bounds are told, rates by provider in their order; a mode, a
+// placement or an option the settings rule out is not.
+func TestBoundedTellsEveryClamp(t *testing.T) {
+	s := DefaultSettings()
+	s.Mode, s.ClientPlacement, s.AZs, s.ResidualRead = "bogus", "bogus", 20, 2
+	s.Rates = map[string]float64{"gcp": -2, "aws": -1, "bogus": -3}
+	s.RegionRates = map[string]float64{"azure": 0.05}
+	_, clamps := s.Bounded()
+	want := []sizing.Clamp{
+		{Field: "network.azs", Given: 20, Used: MaxAZs}, {Field: "network.residual_read", Given: 2, Used: 1},
+		{Field: "network.rates.aws", Given: -1, Used: 0}, {Field: "network.rates.gcp", Given: -2, Used: 0},
+	}
+	if !slices.Equal(clamps, want) {
+		t.Errorf("clamps = %+v", clamps)
+	}
+	if _, clamps := DefaultSettings().Bounded(); len(clamps) != 0 {
+		t.Errorf("default settings clamps = %+v", clamps)
 	}
 }

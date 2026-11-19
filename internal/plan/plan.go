@@ -29,15 +29,21 @@ const (
 	MaxNodeIOPS      = 1e9
 )
 
-// Amounts returns the raw resources of the node.
+// Amounts returns the raw resources of the node, within its bounds.
 func (n Node) Amounts() sizing.Amounts {
-	return sizing.Amounts{
-		Storage: bounded(n.StorageTB, MaxNodeStorageTB) * 1e12, RAM: bounded(n.RAMGiB, MaxNodeRAMGiB) * catalog.GiB,
-		CPU: bounded(n.VCPU, MaxNodeVCPU), IOPS: bounded(n.IOPS, MaxNodeIOPS),
-	}
+	n, _ = n.Bounded()
+	return sizing.Amounts{Storage: n.StorageTB * 1e12, RAM: n.RAMGiB * catalog.GiB, CPU: n.VCPU, IOPS: n.IOPS}
 }
 
-func bounded(v, hi float64) float64 { return min(max(v, 0), hi) }
+// Bounded returns the node within its bounds, with the values it moved (sizing.Clamp).
+func (n Node) Bounded() (Node, []sizing.Clamp) {
+	var b sizing.Bounds
+	b.Float("node.vcpu", &n.VCPU, 0, MaxNodeVCPU)
+	b.Float("node.ram_gib", &n.RAMGiB, 0, MaxNodeRAMGiB)
+	b.Float("node.storage_tb", &n.StorageTB, 0, MaxNodeStorageTB)
+	b.Float("node.iops", &n.IOPS, 0, MaxNodeIOPS)
+	return n, b.Clamps
+}
 
 // RowRequest is a configuration the user added to the comparison.
 type RowRequest struct {

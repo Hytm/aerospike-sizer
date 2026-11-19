@@ -515,7 +515,8 @@
 
   // applyQuery prefills the form from the URL: one parameter per field, named by its path
   // (workload.objects=5e8, hypotheses.growth=0.2, network.azs=3), as Wellness links here; "source"
-  // names where the values come from and "back" (a local URL) links back to it.
+  // names where the values come from and "back" links back to it when the server finds it local
+  // (localBack, passed as the page's data-back).
   function applyQuery() {
     var params = new URLSearchParams(window.location.search), applied = 0;
     params.forEach(function (value, key) {
@@ -535,13 +536,15 @@
       applied++;
     });
     if (!applied) return;
-    var source = params.get("source") || "the link", back = params.get("back") || "", note = $("prefilled");
+    var source = params.get("source") || "the link", back = document.body.getAttribute("data-back"), note = $("prefilled");
     note.textContent = "Prefilled from " + source + ": " + applied + " value" + (applied > 1 ? "s" : "") + " of the form come from it. ";
-    if (/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(back)) {
+    if (back) {
       var a = document.createElement("a");
       a.href = back;
       a.textContent = "Back to " + source;
       note.appendChild(a);
+    } else if (params.get("back")) {
+      note.appendChild(document.createTextNode("The page it links back to is not local: no link back."));
     }
     note.hidden = false;
   }

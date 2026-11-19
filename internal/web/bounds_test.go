@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -71,4 +72,35 @@ func clampOf(t *testing.T, base, path string, v float64) (plan.ClampNote, bool) 
 		}
 	}
 	return plan.ClampNote{}, false
+}
+
+// Wellness listens on any loopback address and names its page by the host the browser used: every
+// one of them gets the link back, nothing else does.
+func TestLocalBack(t *testing.T) {
+	for raw, want := range map[string]string{
+		"http://127.0.0.1:7300/a/Acme/x?growth=40": "http://127.0.0.1:7300/a/Acme/x?growth=40",
+		"http://127.0.0.2:7300/a":                  "http://127.0.0.2:7300/a",
+		"http://[::1]:7300/a":                      "http://[::1]:7300/a",
+		"http://localhost:7300/":                   "http://localhost:7300/",
+		"http://LocalHost:7300/":                   "http://LocalHost:7300/",
+		"http://[::ffff:127.0.0.1]:7300/":          "http://[::ffff:127.0.0.1]:7300/",
+		"https://127.0.0.1:7300/":                  "",
+		"http://example.com/":                      "",
+		"http://127.0.0.1.example.com/":            "",
+		"http://user@127.0.0.1:7300/":              "",
+		"javascript:alert(1)":                      "",
+		"//127.0.0.1/x":                            "",
+		"":                                         "",
+	} {
+		if got := localBack(raw); got != want {
+			t.Errorf("localBack(%q) = %q, want %q", raw, got, want)
+		}
+	}
+	srv := newTestServer(t)
+	if _, body := get(t, srv.URL+"/?workload.rf=3&back="+"http://%5B::1%5D:7300/a/x"); !strings.Contains(html.UnescapeString(body), `data-back="http://[::1]:7300/a/x"`) {
+		t.Errorf("the page does not carry the way back")
+	}
+	if _, body := get(t, srv.URL+"/?back=http://example.com/"); !strings.Contains(body, `data-back=""`) {
+		t.Errorf("the page carries a way back that is not local")
+	}
 }

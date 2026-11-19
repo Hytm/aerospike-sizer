@@ -36,8 +36,8 @@ What it computes:
   of reads that find a record is a workload input, 100 % by default; every read still costs CPU and
   network), a write the bytes of every copy (records fill 8 MiB write blocks). Records kept in memory
   (7.0+ write blocks) are planned at the device fill, the indexes at the RAM fill. All-flash sizing
-  follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks, 10 B of RAM per sprig);
-  secondary indexes count 14 B per entry at 1.5 sparseness.
+  follows the guide's sprig rules (partition-tree-sprigs, 4 KiB blocks, 10 B of RAM per sprig), as
+  Aerospike Wellness does; secondary indexes count 14 B per entry at 1.5 sparseness.
 - **Replication traffic** across AZs (rack-awareness, Active Rack, Local read, client placement) or
   across regions with XDR, and its monthly cost per provider: cross-AZ rates (AWS both directions,
   Google Cloud egress only, Azure free since 2024) or inter-region rates, editable.

@@ -75,6 +75,9 @@ locale (`make ci`), et on n'en ajoute pas.
     petit score prix de référence × nœuds × (1 + nœuds ÷ 50), à égalité le moins de nœuds puis le nom ;
     wellness classe au prix d'un engagement d'un an en US East et le transmet au sizer (`pricing`) ; le
     sizer seul ouvre au prix à la demande (sizer T5, T21 ; wellness T23, T49) ;
+  - textes du sizer : chaque explication, contrôle et note de l'API porte un code et ses valeurs, que
+    wellness rédige en français et en anglais (repli sur l'anglais du sizer pour un code inconnu) ; un
+    code ne change jamais de sens (sizer T22 ; wellness T50) ;
   - Un changement de convention se fait dans les deux outils (`~/work/aerospike-sizer` et
     `~/work/aerospike-wellness`) et se consigne dans les deux `docs/decisions.md` ; cette liste est la
     même dans les deux `CLAUDE.md`.

@@ -26,8 +26,11 @@ const TightLoad = 0.85
 
 // Fit tells how a number of nodes of one shape holds the demand.
 type Fit struct {
-	Status Status   `json:"status"`
-	Checks []string `json:"checks"`
+	Status Status `json:"status"`
+	// Checks are the remarks in English; Messages are the same remarks as codes and values, one
+	// for one (T22).
+	Checks   []string  `json:"checks"`
+	Messages []Message `json:"messages"`
 	// Load is the demand over the usable capacity (ceilings applied) of the nodes left after the
 	// planned loss: above 1 the configuration does not hold.
 	Load map[Constraint]float64 `json:"load"`
@@ -38,25 +41,21 @@ type Fit struct {
 // Evaluate grades nodes × node against the demand.
 func Evaluate(d, node Amounts, nodes int, h Hypotheses, l Layout) Fit {
 	f := Fit{Status: OK, Load: map[Constraint]float64{}, Utilization: utilization(d, h.Capacity(node), nodes)}
-	flag := func(s Status, format string, args ...any) {
+	flag := func(s Status, m Message) {
 		if s.rank() > f.Status.rank() {
 			f.Status = s
 		}
-		f.Checks = append(f.Checks, fmt.Sprintf(format, args...))
+		f.Messages = append(f.Messages, m)
 	}
 	if nodes < l.MinNodes() {
-		flag(Short, "Topology: %d node(s) < RF+1 (%d min).", nodes, l.MinNodes())
+		flag(Short, message("check.topology", Args{"nodes": nodes, "min_nodes": l.MinNodes()}))
 	}
 	if l.AZs > 1 && nodes < l.AZs {
-		flag(Tight, "Fewer nodes than configured AZs (%d): no real multi-AZ spread.", l.AZs)
+		flag(Tight, message("check.fewer_azs", Args{"azs": l.AZs}))
 	} else if l.Racks > 1 && nodes%l.Racks != 0 {
-		flag(Tight, "%d nodes do not split evenly over %d racks.", nodes, l.Racks)
+		flag(Tight, message("check.uneven_racks", Args{"nodes": nodes, "racks": l.Racks}))
 	}
 	serving := h.Serving(nodes, l)
-	down := ""
-	if serving < nodes {
-		down = ", " + h.lossText(l)
-	}
 	usable := h.Usable(node)
 	for _, c := range Resources {
 		demand := d.Of(c)
@@ -65,21 +64,26 @@ func Evaluate(d, node Amounts, nodes int, h Hypotheses, l Layout) Fit {
 		}
 		capacity := usable.Of(c) * float64(serving)
 		if capacity <= 0 {
-			flag(Short, "No usable %s on this node shape.", c.label())
+			flag(Short, message("check.no_usable", Args{"resource": c}))
 			continue
 		}
 		load := demand / capacity
 		f.Load[c] = load
 		switch {
 		case exceeds(load, 1):
-			flag(Short, "Not enough %s: %s needed vs %s usable (%s%s).", c.label(), c.amount(demand), c.amount(capacity), h.ceilingText(c), down)
+			limits := []Message{h.ceiling(c)}
+			if serving < nodes {
+				limits = append(limits, h.loss(l))
+			}
+			flag(Short, message("check.short", Args{"resource": c, "needed": demand, "usable": capacity}, limits...))
 		case exceeds(load, TightLoad):
-			flag(Tight, "%s tight: %s of the usable capacity.", capitalize(c.label()), units.Pct(load))
+			flag(Tight, message("check.tight", Args{"resource": c, "load": load}))
 		}
 	}
-	if len(f.Checks) == 0 {
-		f.Checks = append(f.Checks, "Comfortable margin on storage, RAM, CPU and IOPS.")
+	if len(f.Messages) == 0 {
+		f.Messages = append(f.Messages, message("check.comfortable", nil))
 	}
+	f.Checks = Texts(f.Messages)
 	return f
 }
 
@@ -187,107 +191,119 @@ func Comfortable(insts []catalog.Instance, d Amounts, h Hypotheses, l Layout, no
 	return best, found
 }
 
-// Explain tells in a sentence or two what drives a sizing.
+// Explain tells in a sentence or two what drives a sizing: the English of Explained.
 func (s Sizing) Explain(w Workload, d Detail, node Amounts, h Hypotheses, l Layout) string {
+	return strings.Join(Texts(s.Explained(w, d, node, h, l)), " ")
+}
+
+// Explained returns the sentences that tell what drives a sizing, as messages (T22).
+func (s Sizing) Explained(w Workload, d Detail, node Amounts, h Hypotheses, l Layout) []Message {
 	usable := h.Usable(node)
-	scope := fmt.Sprintf("RF%d, %s growth included", w.RF, units.Pct(h.Growth))
 	if s.Nodes == 0 {
 		if usable.Of(s.Binding) <= 0 {
-			return fmt.Sprintf("No node count works: the generic node has no usable %s once the ceilings and the OS reserve are applied.", s.Binding.label())
+			return []Message{message("explain.unusable", Args{"resource": s.Binding})}
 		}
-		return fmt.Sprintf("No sensible node count works: the generic node offers too little %s for this workload.", s.Binding.label())
+		return []Message{message("explain.too_little", Args{"resource": s.Binding})}
 	}
-	var b strings.Builder
+	// sized quotes a resource that drives the sizing: the demand with its scope, the usable amount
+	// per node and its ceiling.
+	sized := func(demand, perNode, fill float64) Args {
+		return Args{"resource": s.Binding, "demand": demand, "usable": perNode, "fill": fill, "rf": w.RF, "growth": h.Growth}
+	}
+	var out []Message
 	switch s.Binding {
 	case ByStorage:
-		fmt.Fprintf(&b, "Disk storage drives the sizing: %s to place (%s; %s), %s usable per node (%s).", units.SI(d.Storage), d.storageParts(), scope, units.SI(usable.Storage), h.ceilingText(ByStorage))
+		out = append(out, message("explain.storage", sized(d.Storage, usable.Storage, h.StorageFill), d.storageParts()...))
 	case ByRAM:
-		fmt.Fprintf(&b, "Memory drives the sizing: %s (%s; %s), %s usable per node (%s).", units.IEC(d.RAM), d.ramParts(), scope, units.IEC(usable.RAM), h.ceilingText(ByRAM))
+		a := sized(d.RAM, usable.RAM, h.RAMFill)
+		a["os_reserve_gib"], a["os_reserve_pct"] = h.OSReserveGiB, h.OSReservePct
+		out = append(out, message("explain.ram", a, d.ramParts()...))
 		if d.DataRAM > 0 {
-			fmt.Fprintf(&b, " That ceiling weighs the RAM fill of the indexes with the %s storage fill of the records in memory.", units.Pct(h.StorageFill))
+			out = append(out, message("explain.records_in_memory", Args{"fill": h.StorageFill}))
 		}
 	case ByCPU:
-		fmt.Fprintf(&b, "CPU drives the sizing: %s transactions/s at the horizon (%s growth) need %s at %s per vCPU, %s usable per node (%s).", units.Count(d.TPS), units.Pct(h.Growth), ByCPU.amount(d.CPU), units.Count(h.OpsPerVCPU), ByCPU.amount(usable.CPU), h.ceilingText(ByCPU))
+		out = append(out, message("explain.cpu", Args{"resource": ByCPU, "tps": d.TPS, "growth": h.Growth, "demand": d.CPU, "ops_per_vcpu": h.OpsPerVCPU, "usable": usable.CPU, "fill": h.CPUTarget}))
 	case ByIOPS:
-		fmt.Fprintf(&b, "Device throughput drives the sizing: %s IOPS of 4 KiB (%s; %s), %s usable per node (%s).", units.Count(d.IOPS), d.iopsParts(w.FoundShare()), scope, units.Count(usable.IOPS), h.ceilingText(ByIOPS))
+		out = append(out, message("explain.iops", sized(d.IOPS, usable.IOPS, h.IOTarget), d.iopsParts(w.FoundShare())...))
 	default:
-		fmt.Fprintf(&b, "Storage, RAM, CPU and IOPS fit on fewer nodes: the topology floor (RF+1 = %d) sets the minimum for fault tolerance.", l.MinNodes())
+		out = append(out, message("explain.floor", Args{"min_nodes": l.MinNodes()}))
 	}
 	if h.Loss != NoLoss && s.Binding != ByTopology && s.Binding != ByRacks {
-		fmt.Fprintf(&b, " The ceilings still hold with %s.", h.lossText(l))
+		out = append(out, message("explain.loss", nil, h.loss(l)))
 	}
 	if s.Rounded {
-		fmt.Fprintf(&b, " Rounded up to %d nodes so that each of the %d racks holds the same number.", s.Nodes, l.Racks)
+		out = append(out, message("explain.rounded", Args{"nodes": s.Nodes, "racks": l.Racks}))
 	}
-	return b.String()
+	return out
 }
 
 // storageParts lists what the storage demand is made of.
-func (d Detail) storageParts() string {
-	var parts []string
+func (d Detail) storageParts() []Message {
+	var parts []Message
 	if d.Data > 0 {
-		parts = append(parts, "records "+units.SI(d.Data))
+		parts = append(parts, message("part.records", Args{"bytes": d.Data}))
 	}
 	if d.FlashIndex > 0 {
-		parts = append(parts, fmt.Sprintf("primary index on flash %s with %d sprigs per partition%s", units.SI(d.FlashIndex), d.SprigsPerPartition, d.sprigsNote()))
+		a := Args{"bytes": d.FlashIndex, "sprigs": d.SprigsPerPartition}
+		code := "part.flash_index"
+		if d.SprigsPerPartition > SupportSprigsPerPart {
+			// Beyond what the reference lets one set alone.
+			code, a["support_sprigs"] = "part.flash_index_support", SupportSprigsPerPart
+		}
+		parts = append(parts, message(code, a))
 	}
 	if d.FlashSindex > 0 {
-		parts = append(parts, "secondary indexes on flash "+units.SI(d.FlashSindex))
+		parts = append(parts, message("part.flash_sindex", Args{"bytes": d.FlashSindex}))
 	}
-	return strings.Join(parts, ", ")
-}
-
-// sprigsNote warns when partition-tree-sprigs goes beyond what the reference lets one set alone.
-func (d Detail) sprigsNote() string {
-	if d.SprigsPerPartition > SupportSprigsPerPart {
-		return fmt.Sprintf(" (above %s: ask Aerospike Support)", units.Count(SupportSprigsPerPart))
-	}
-	return ""
+	return parts
 }
 
 // ramParts lists what the memory demand is made of.
-func (d Detail) ramParts() string {
-	var parts []string
-	add := func(label string, v float64) {
+func (d Detail) ramParts() []Message {
+	var parts []Message
+	add := func(code string, v float64) {
 		if v > 0 {
-			parts = append(parts, label+" "+units.IEC(v))
+			parts = append(parts, message(code, Args{"bytes": v}))
 		}
 	}
-	add("primary index", d.Index)
-	add("sprigs of the flash index", d.Sprigs)
-	add("secondary indexes", d.Sindex)
-	add("set indexes", d.SetIndex)
-	add("records in memory", d.DataRAM)
-	return strings.Join(parts, ", ")
+	add("part.index", d.Index)
+	add("part.sprigs", d.Sprigs)
+	add("part.sindex", d.Sindex)
+	add("part.set_index", d.SetIndex)
+	add("part.records_in_memory", d.DataRAM)
+	return parts
 }
 
 // iopsParts lists what the device load is made of; found is the share of the reads that find a
 // record, the only ones that read record blocks.
-func (d Detail) iopsParts(found float64) string {
-	var parts []string
-	add := func(label string, v float64) {
-		if v > 0 {
-			parts = append(parts, label+" "+units.Count(v))
+func (d Detail) iopsParts(found float64) []Message {
+	var parts []Message
+	if d.ReadIOPS > 0 {
+		a := Args{"count": d.ReadIOPS}
+		code := "part.reads"
+		if d.BlocksPerRead > 1 {
+			code, a["blocks"] = "part.reads_blocks", d.BlocksPerRead
 		}
+		if found < 1 {
+			code, a["found"] = code+"_found", found
+		}
+		parts = append(parts, message(code, a))
 	}
-	reads := "record reads"
-	if d.BlocksPerRead > 1 {
-		reads = fmt.Sprintf("record reads of %.0f blocks", d.BlocksPerRead)
+	if d.WriteIOPS > 0 {
+		parts = append(parts, message("part.writes", Args{"count": d.WriteIOPS}))
 	}
-	if found < 1 {
-		reads += fmt.Sprintf(" for the %s of the reads that find a record", units.PctTenth(found))
+	if d.IndexIOPS > 0 {
+		parts = append(parts, message("part.flash_index_io", Args{"count": d.IndexIOPS}))
 	}
-	add(reads, d.ReadIOPS)
-	add("record writes in 4 KiB blocks with defrag", d.WriteIOPS)
-	add("flash index blocks", d.IndexIOPS)
-	return strings.Join(parts, ", ")
+	return parts
 }
 
-func (h Hypotheses) lossText(l Layout) string {
+// loss names the loss the ceilings survive.
+func (h Hypotheses) loss(l Layout) Message {
 	if h.Loss == RackLoss && l.Racks > 1 {
-		return "one rack down"
+		return message("loss.rack", nil)
 	}
-	return "one node down"
+	return message("loss.node", nil)
 }
 
 func (c Constraint) label() string {
@@ -309,16 +325,17 @@ func (c Constraint) amount(v float64) string {
 	return units.Count(v) + " IOPS"
 }
 
-func (h Hypotheses) ceilingText(c Constraint) string {
+// ceiling names the ceiling of a resource.
+func (h Hypotheses) ceiling(c Constraint) Message {
 	switch c {
 	case ByStorage:
-		return units.Pct(h.StorageFill) + " fill"
+		return message("ceiling.storage", Args{"fill": h.StorageFill})
 	case ByRAM:
-		return fmt.Sprintf("%s of RAM after the OS reserve of %.0f GiB or %s", units.Pct(h.RAMFill), h.OSReserveGiB, units.Pct(h.OSReservePct))
+		return message("ceiling.ram", Args{"fill": h.RAMFill, "os_reserve_gib": h.OSReserveGiB, "os_reserve_pct": h.OSReservePct})
 	case ByCPU:
-		return units.Pct(h.CPUTarget) + " CPU"
+		return message("ceiling.cpu", Args{"fill": h.CPUTarget})
 	}
-	return units.Pct(h.IOTarget) + " of the sustained IOPS"
+	return message("ceiling.iops", Args{"fill": h.IOTarget})
 }
 
 func capitalize(s string) string {

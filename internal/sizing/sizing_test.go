@@ -579,7 +579,7 @@ func TestRecommendPicksTheCheapestComfortableFit(t *testing.T) {
 	p, _ := catalog.Get("aws")
 	l := Layout{RF: 2, AZs: 3, Racks: 3}
 	d := DemandOf(workload(), h)
-	o, ok := Recommend(p.Instances, d, h, l)
+	o, ok := Recommend(p.Instances, d, h, l, catalog.OnDemand)
 	if !ok {
 		t.Fatal("no recommendation")
 	}
@@ -587,12 +587,10 @@ func TestRecommendPicksTheCheapestComfortableFit(t *testing.T) {
 		t.Errorf("the recommendation must be comfortable: %+v", f)
 	}
 	// No other instance type reaches a comfortable fit for less, nodes penalty included.
-	score := func(inst catalog.Instance, n int) float64 {
-		return inst.PriceHour * float64(n) * (1 + float64(n)/nodePenaltyPer)
-	}
+	best := score(o.Instance.PriceHour, o.Nodes)
 	for _, inst := range p.Instances {
-		if n, ok := comfortableNodes(d, OfInstance(inst), h, l); ok && score(inst, n) < score(o.Instance, o.Nodes)-1e-9 {
-			t.Errorf("%s × %d scores %v, under %s × %d at %v", inst.Name, n, score(inst, n), o.Instance.Name, o.Nodes, score(o.Instance, o.Nodes))
+		if n, ok := comfortableNodes(d, OfInstance(inst), h, l); ok && score(inst.PriceHour, n) < best-1e-9 {
+			t.Errorf("%s × %d scores %v, under %s × %d at %v", inst.Name, n, score(inst.PriceHour, n), o.Instance.Name, o.Nodes, best)
 		}
 	}
 	if o.Nodes%3 != 0 {
@@ -606,11 +604,11 @@ func TestRecommendAddsNodesUntilComfortable(t *testing.T) {
 	p := &catalog.Provider{Instances: []catalog.Instance{{Name: "one", VCPU: 64, RAMGiB: 512, Drives: 1, DriveGB: 1000, IOPS: 1e6, PriceHour: 1}}}
 	l := Layout{RF: 2, AZs: 1, Racks: 1}
 	// 1.3 TB on 3 nodes, 2 serving × 700 GB usable: 93 %, tight; a fourth node brings it to 62 %.
-	if o, ok := Recommend(p.Instances, Amounts{Storage: 1.3e12}, h, l); !ok || o.Nodes != 4 {
+	if o, ok := Recommend(p.Instances, Amounts{Storage: 1.3e12}, h, l, catalog.OnDemand); !ok || o.Nodes != 4 {
 		t.Errorf("recommendation = %+v, %v", o, ok)
 	}
 	// 700 TB hold on 1,001 nodes at 100 %; 1,178 keep the load under 85 % with one node down.
-	o, ok := Recommend(p.Instances, Amounts{Storage: 7e14}, h, l)
+	o, ok := Recommend(p.Instances, Amounts{Storage: 7e14}, h, l, catalog.OnDemand)
 	if !ok || o.Nodes != 1178 {
 		t.Errorf("recommendation = %+v, %v", o, ok)
 	}
@@ -618,10 +616,10 @@ func TestRecommendAddsNodesUntilComfortable(t *testing.T) {
 		t.Errorf("fit = %+v", f)
 	}
 	// Beyond MaxNodes only the holding count is offered, if any.
-	if o, ok := Recommend(p.Instances, Amounts{Storage: 6.9e15}, h, l); !ok || o.Nodes != 9859 || Evaluate(Amounts{Storage: 6.9e15}, OfInstance(p.Instances[0]), o.Nodes, h, l).Status != Tight {
+	if o, ok := Recommend(p.Instances, Amounts{Storage: 6.9e15}, h, l, catalog.OnDemand); !ok || o.Nodes != 9859 || Evaluate(Amounts{Storage: 6.9e15}, OfInstance(p.Instances[0]), o.Nodes, h, l).Status != Tight {
 		t.Errorf("recommendation near the bound = %+v, %v", o, ok)
 	}
-	if _, ok := Recommend(p.Instances, Amounts{RAM: 1e18}, h, l); ok {
+	if _, ok := Recommend(p.Instances, Amounts{RAM: 1e18}, h, l, catalog.OnDemand); ok {
 		t.Error("an impossible demand has no recommendation")
 	}
 }
@@ -631,7 +629,7 @@ func TestComfortableIsTheCheapestShapeThatFitsWell(t *testing.T) {
 	p, _ := catalog.Get("azure")
 	l := Layout{RF: 2, AZs: 3, Racks: 3}
 	d := DemandOf(workload(), h)
-	inst, ok := Comfortable(p.Instances, d, h, l, 3)
+	inst, ok := Comfortable(p.Instances, d, h, l, 3, catalog.OnDemand)
 	if !ok {
 		t.Fatal("no comfortable instance")
 	}
@@ -642,7 +640,7 @@ func TestComfortableIsTheCheapestShapeThatFitsWell(t *testing.T) {
 	if smaller.Name != inst.Name && Evaluate(d, OfInstance(smaller), 3, h, l).Status == OK {
 		t.Errorf("%s fits well too and costs less than %s", smaller.Name, inst.Name)
 	}
-	if _, ok := Comfortable(p.Instances, Amounts{RAM: 1e18}, h, l, 3); ok {
+	if _, ok := Comfortable(p.Instances, Amounts{RAM: 1e18}, h, l, 3, catalog.OnDemand); ok {
 		t.Error("an impossible demand has no comfortable shape")
 	}
 }
@@ -660,7 +658,7 @@ func TestComfortableSkipsShapesWithAnUnusableResource(t *testing.T) {
 	l := Layout{RF: 2, AZs: 3, Racks: 3}
 	w := Workload{ObjectSize: 1024, Objects: 125e6, ReadsPerSec: 1000, WritesPerSec: 100, RF: 2, Engine: Device}
 	// i4i.large: no usable RAM; i4i.xlarge: 19.4 GiB of index on 2 × 11.2 GiB, tight; i4i.2xlarge fits.
-	if inst, ok := Comfortable(i4i, DemandOf(w, h), h, l, 3); !ok || inst.Name != "i4i.2xlarge" {
+	if inst, ok := Comfortable(i4i, DemandOf(w, h), h, l, 3, catalog.OnDemand); !ok || inst.Name != "i4i.2xlarge" {
 		t.Errorf("comfortable = %+v, %v", inst, ok)
 	}
 }

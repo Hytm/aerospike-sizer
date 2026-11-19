@@ -199,7 +199,7 @@ func Compute(req Request, q Quoter) Response {
 			continue
 		}
 		region, _ := p.Region(p.DefaultRegion)
-		o, ok := sizing.Recommend(p.Offered(region.ID), c.demand, h, c.layout)
+		o, ok := sizing.Recommend(p.Offered(region.ID), c.demand, h, c.layout, catalog.OnDemand)
 		if !ok {
 			resp.Notes = append(resp.Notes, fmt.Sprintf("%s: no instance type of the catalog offered in %s suits this workload.", p.Label, region.Label))
 			continue
@@ -250,7 +250,7 @@ func (c computation) row(id string, auto bool, p *catalog.Provider, region catal
 	if r.Fit.Status == sizing.OK {
 		return r
 	}
-	if alt, ok := sizing.Comfortable(p.Offered(region.ID), c.demand, c.hyp, c.layout, nodes); ok && alt.Name != inst.Name {
+	if alt, ok := sizing.Comfortable(p.Offered(region.ID), c.demand, c.hyp, c.layout, nodes, catalog.OnDemand); ok && alt.Name != inst.Name {
 		a := c.evaluate(id+"/alt", false, p, region, alt, nodes)
 		r.Alternative = &a
 	}

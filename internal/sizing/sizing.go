@@ -35,12 +35,14 @@ type Workload struct {
 	// ReadsFound is the share of the reads that find a record, 0 to 1; nil (absent) means all of
 	// them, so that callers written before it keep their figures. A read that finds nothing is
 	// answered from the primary index: it costs CPU and network like any read, no record block.
-	ReadsFound   *float64  `json:"reads_found"`
-	WritesPerSec float64   `json:"writes_per_sec"`
-	RF           int       `json:"rf"`
-	Engine       Engine    `json:"engine"`
-	Persist      bool      `json:"persist"`  // memory engine: records are also written to a device
-	IndexOn      Placement `json:"index_on"` // primary index placement; in RAM with the memory engine
+	ReadsFound   *float64 `json:"reads_found"`
+	WritesPerSec float64  `json:"writes_per_sec"`
+	RF           int      `json:"rf"`
+	Engine       Engine   `json:"engine"`
+	Persist      bool     `json:"persist"` // memory engine: records are also written to a device
+	// IndexOn is the primary index placement; in RAM with the memory engine (noted). An index on pmem
+	// is planned in RAM, no catalog instance having pmem (T18).
+	IndexOn Placement `json:"index_on"`
 	// SindexEntries is the number of secondary index entries one record contributes, summed over
 	// the indexes: one per scalar bin indexed, one per distinct element for a list or map bin.
 	SindexEntries float64   `json:"sindex_entries"`
@@ -177,8 +179,10 @@ const (
 
 // Hypotheses are the assumptions of every estimate; the interface shows and edits them.
 type Hypotheses struct {
-	Growth         float64 `json:"growth"`          // growth of the records and of the throughput over the planning horizon (0.3 = +30 %)
-	IndexBytes     float64 `json:"index_bytes"`     // primary index per record copy (64 B)
+	Growth float64 `json:"growth"` // growth of the records and of the throughput over the planning horizon (0.3 = +30 %)
+	// IndexBytes is the primary index per record copy (64 B); an effective figure when it folds
+	// tombstones or namespaces storing fewer copies than RF, as Aerospike Wellness sends it (T18).
+	IndexBytes     float64 `json:"index_bytes"`
 	RecordOverhead float64 `json:"record_overhead"` // bytes added to the object size when it is the payload only
 	WriteOverhead  float64 `json:"write_overhead"`  // write-block overhead: device space on top of the stored records (0.1 = +10 %)
 	Compression    float64 `json:"compression"`     // stored size of records as a share of their size (1: no compression), on device and in memory

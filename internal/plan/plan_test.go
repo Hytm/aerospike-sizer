@@ -143,11 +143,11 @@ func TestTightRowGetsAComfortableAlternative(t *testing.T) {
 	if r.Fit.Status != sizing.Tight || !near(r.Fit.Load[sizing.ByRAM], 0.961, 0.001) || r.Alternative == nil {
 		t.Fatalf("row = %+v", r)
 	}
-	if r.Alternative.ID != "r1/alt" || r.Alternative.Instance.Name != "i4i.4xlarge" || r.Alternative.Nodes != 3 || r.Alternative.Fit.Status != sizing.OK {
+	if r.Alternative.ID != "r1/alt" || r.Alternative.Instance.Name != "i3en.3xlarge" || r.Alternative.Nodes != 3 || r.Alternative.Fit.Status != sizing.OK {
 		t.Errorf("alternative = %+v", r.Alternative)
 	}
 	// A pending price on the alternative alone keeps the answer pending.
-	resp = Compute(req, referenceQuoter{pendingFor: "i4i.4xlarge"})
+	resp = Compute(req, referenceQuoter{pendingFor: "i3en.3xlarge"})
 	if r := resp.Rows[0]; !resp.Pending || r.Price.Source != pricing.Live || r.Alternative.Price.Source != pricing.Pending {
 		t.Errorf("pending %v, row price %+v, alternative price %+v", resp.Pending, r.Price, r.Alternative.Price)
 	}
@@ -256,14 +256,14 @@ func TestUnknownRowsAreIgnoredWithANote(t *testing.T) {
 // as a recommendation or an alternative there.
 func TestTypesNotOfferedInTheRegionAreIgnored(t *testing.T) {
 	req := DefaultRequest()
-	req.Auto = []string{"gcp"}
+	req.Auto = []string{"aws"}
 	req.Rows = []RowRequest{
-		{ID: "jakarta", Provider: "gcp", Region: "asia-southeast2", Instance: "z3-highmem-8-highlssd", Nodes: 3},
-		{ID: "singapore", Provider: "gcp", Region: "asia-southeast1", Instance: "z3-highmem-8-highlssd", Nodes: 3},
+		{ID: "paris", Provider: "aws", Region: "eu-west-3", Instance: "r6id.xlarge", Nodes: 3},
+		{ID: "ireland", Provider: "aws", Region: "eu-west-1", Instance: "r6id.xlarge", Nodes: 3},
 	}
 	resp := Compute(req, referenceQuoter{})
-	want := `Google Cloud: instance type "z3-highmem-8-highlssd" is not offered in asia-southeast2 · Jakarta, ignored.`
-	if len(resp.Rows) != 2 || resp.Rows[1].ID != "singapore" || len(resp.Notes) != 1 || resp.Notes[0] != want {
+	want := `AWS: instance type "r6id.xlarge" is not offered in eu-west-3 · Paris, ignored.`
+	if len(resp.Rows) != 2 || resp.Rows[1].ID != "ireland" || len(resp.Notes) != 1 || resp.Notes[0] != want {
 		t.Fatalf("rows %d, notes %q", len(resp.Rows), resp.Notes)
 	}
 	for _, r := range resp.Rows {

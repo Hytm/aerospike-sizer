@@ -23,9 +23,9 @@ type Instance struct {
 	RAMGiB  float64 `json:"ram_gib"`
 	Drives  int     `json:"drives"`
 	DriveGB float64 `json:"drive_gb"` // decimal GB (a drive published in GiB is converted)
-	// IOPS is the planning figure per node, in 4 KiB blocks: the sustained numbers of the
-	// aerospike-wellness catalog for i4i and Lsv3 (their measurement is not recorded) and, for the
-	// Google drives, half the published random-write IOPS (decision T13; T15 for Z3).
+	// IOPS is the planning figure per node, in 4 KiB blocks: half the 100 % random-write IOPS the
+	// provider publishes for the local drives of every AWS and Google type (decision T13, extended
+	// to AWS by T16), 60,000 per disk for Azure, which publishes no write figure (T16).
 	IOPS      float64  `json:"iops"`
 	PriceHour float64  `json:"price_hour"` // reference on-demand Linux price in PricesRegion
 	Regions   []string `json:"regions"`    // the provider's regions that offer the type (T19)
@@ -93,8 +93,9 @@ var catalogJSON []byte
 // Providers is the embedded catalog, in display order.
 var Providers = mustProviders()
 
-// PricesAsOf is the date the latest reference prices were read (decisions T6 and T13).
-const PricesAsOf = "2026-10-30"
+// PricesAsOf is the date the reference prices were read: every one of them was checked against the
+// providers' published prices then (decisions T6, T13 and T19).
+const PricesAsOf = "2026-11-19"
 
 // PricesRegion is the region whose public prices the reference holds, per provider (US East).
 var PricesRegion = map[string]string{"aws": "us-east-1", "azure": "eastus", "gcp": "us-east1"}

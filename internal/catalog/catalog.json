@@ -44,6 +44,47 @@
   ],
   "instances": [
    {
+    "name": "r6id.large",
+    "family": "r6id",
+    "arch": "x86_64",
+    "vcpu": 2,
+    "ram_gib": 16,
+    "drives": 1,
+    "drive_gb": 118,
+    "iops": 8385.5,
+    "price_hour": 0.1512,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i8g.large",
+    "family": "i8g",
+    "arch": "arm64",
+    "vcpu": 2,
+    "ram_gib": 16,
+    "drives": 1,
+    "drive_gb": 468,
+    "iops": 20625,
+    "price_hour": 0.1716,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
     "name": "i4i.large",
     "family": "i4i",
     "arch": "x86_64",
@@ -63,6 +104,89 @@
      "ap-southeast-3",
      "ap-northeast-1",
      "sa-east-1"
+    ]
+   },
+   {
+    "name": "im4gn.large",
+    "family": "im4gn",
+    "arch": "arm64",
+    "vcpu": 2,
+    "ram_gib": 8,
+    "drives": 1,
+    "drive_gb": 937,
+    "iops": 12500,
+    "price_hour": 0.1819,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i3en.large",
+    "family": "i3en",
+    "arch": "x86_64",
+    "vcpu": 2,
+    "ram_gib": 16,
+    "drives": 1,
+    "drive_gb": 1250,
+    "iops": 16250,
+    "price_hour": 0.226,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i7ie.large",
+    "family": "i7ie",
+    "arch": "x86_64",
+    "vcpu": 2,
+    "ram_gib": 16,
+    "drives": 1,
+    "drive_gb": 1250,
+    "iops": 21666.5,
+    "price_hour": 0.2599,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "r6id.xlarge",
+    "family": "r6id",
+    "arch": "x86_64",
+    "vcpu": 4,
+    "ram_gib": 32,
+    "drives": 1,
+    "drive_gb": 237,
+    "iops": 16771,
+    "price_hour": 0.3024,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
     ]
    },
    {
@@ -88,6 +212,111 @@
     ]
    },
    {
+    "name": "i8g.xlarge",
+    "family": "i8g",
+    "arch": "arm64",
+    "vcpu": 4,
+    "ram_gib": 32,
+    "drives": 1,
+    "drive_gb": 937,
+    "iops": 41250,
+    "price_hour": 0.3432,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "im4gn.xlarge",
+    "family": "im4gn",
+    "arch": "arm64",
+    "vcpu": 4,
+    "ram_gib": 16,
+    "drives": 1,
+    "drive_gb": 1875,
+    "iops": 25000,
+    "price_hour": 0.36379,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i3en.xlarge",
+    "family": "i3en",
+    "arch": "x86_64",
+    "vcpu": 4,
+    "ram_gib": 32,
+    "drives": 1,
+    "drive_gb": 2500,
+    "iops": 32500,
+    "price_hour": 0.452,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i7ie.xlarge",
+    "family": "i7ie",
+    "arch": "x86_64",
+    "vcpu": 4,
+    "ram_gib": 32,
+    "drives": 1,
+    "drive_gb": 2500,
+    "iops": 43333,
+    "price_hour": 0.5198,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "r6id.2xlarge",
+    "family": "r6id",
+    "arch": "x86_64",
+    "vcpu": 8,
+    "ram_gib": 64,
+    "drives": 1,
+    "drive_gb": 474,
+    "iops": 33542,
+    "price_hour": 0.6048,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
     "name": "i4i.2xlarge",
     "family": "i4i",
     "arch": "x86_64",
@@ -97,6 +326,155 @@
     "drive_gb": 1875,
     "iops": 55000,
     "price_hour": 0.686,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i8g.2xlarge",
+    "family": "i8g",
+    "arch": "arm64",
+    "vcpu": 8,
+    "ram_gib": 64,
+    "drives": 1,
+    "drive_gb": 1875,
+    "iops": 82500,
+    "price_hour": 0.6864,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "im4gn.2xlarge",
+    "family": "im4gn",
+    "arch": "arm64",
+    "vcpu": 8,
+    "ram_gib": 32,
+    "drives": 1,
+    "drive_gb": 3750,
+    "iops": 50000,
+    "price_hour": 0.72758,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i3en.2xlarge",
+    "family": "i3en",
+    "arch": "x86_64",
+    "vcpu": 8,
+    "ram_gib": 64,
+    "drives": 2,
+    "drive_gb": 2500,
+    "iops": 65000,
+    "price_hour": 0.904,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i7ie.2xlarge",
+    "family": "i7ie",
+    "arch": "x86_64",
+    "vcpu": 8,
+    "ram_gib": 64,
+    "drives": 2,
+    "drive_gb": 2500,
+    "iops": 86666,
+    "price_hour": 1.0396,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "r6id.4xlarge",
+    "family": "r6id",
+    "arch": "x86_64",
+    "vcpu": 16,
+    "ram_gib": 128,
+    "drives": 1,
+    "drive_gb": 950,
+    "iops": 67083.5,
+    "price_hour": 1.2096,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i3en.3xlarge",
+    "family": "i3en",
+    "arch": "x86_64",
+    "vcpu": 12,
+    "ram_gib": 96,
+    "drives": 1,
+    "drive_gb": 7500,
+    "iops": 100000,
+    "price_hour": 1.356,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i8g.4xlarge",
+    "family": "i8g",
+    "arch": "arm64",
+    "vcpu": 16,
+    "ram_gib": 128,
+    "drives": 1,
+    "drive_gb": 3750,
+    "iops": 165000,
+    "price_hour": 1.3728,
     "regions": [
      "us-east-1",
      "us-west-2",
@@ -132,6 +510,111 @@
     ]
    },
    {
+    "name": "im4gn.4xlarge",
+    "family": "im4gn",
+    "arch": "arm64",
+    "vcpu": 16,
+    "ram_gib": 64,
+    "drives": 1,
+    "drive_gb": 7500,
+    "iops": 100000,
+    "price_hour": 1.45517,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i7ie.3xlarge",
+    "family": "i7ie",
+    "arch": "x86_64",
+    "vcpu": 12,
+    "ram_gib": 96,
+    "drives": 1,
+    "drive_gb": 7500,
+    "iops": 130000,
+    "price_hour": 1.5594,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "r6id.8xlarge",
+    "family": "r6id",
+    "arch": "x86_64",
+    "vcpu": 32,
+    "ram_gib": 256,
+    "drives": 1,
+    "drive_gb": 1900,
+    "iops": 134167,
+    "price_hour": 2.4192,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i3en.6xlarge",
+    "family": "i3en",
+    "arch": "x86_64",
+    "vcpu": 24,
+    "ram_gib": 192,
+    "drives": 2,
+    "drive_gb": 7500,
+    "iops": 200000,
+    "price_hour": 2.712,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i8g.8xlarge",
+    "family": "i8g",
+    "arch": "arm64",
+    "vcpu": 32,
+    "ram_gib": 256,
+    "drives": 2,
+    "drive_gb": 3750,
+    "iops": 330000,
+    "price_hour": 2.7456,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
     "name": "i4i.8xlarge",
     "family": "i4i",
     "arch": "x86_64",
@@ -154,6 +637,152 @@
     ]
    },
    {
+    "name": "im4gn.8xlarge",
+    "family": "im4gn",
+    "arch": "arm64",
+    "vcpu": 32,
+    "ram_gib": 128,
+    "drives": 2,
+    "drive_gb": 7500,
+    "iops": 200000,
+    "price_hour": 2.91034,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i7ie.6xlarge",
+    "family": "i7ie",
+    "arch": "x86_64",
+    "vcpu": 24,
+    "ram_gib": 192,
+    "drives": 2,
+    "drive_gb": 7500,
+    "iops": 260000,
+    "price_hour": 3.1188,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "r6id.12xlarge",
+    "family": "r6id",
+    "arch": "x86_64",
+    "vcpu": 48,
+    "ram_gib": 384,
+    "drives": 2,
+    "drive_gb": 1425,
+    "iops": 201250,
+    "price_hour": 3.6288,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i4i.12xlarge",
+    "family": "i4i",
+    "arch": "x86_64",
+    "vcpu": 48,
+    "ram_gib": 384,
+    "drives": 3,
+    "drive_gb": 3750,
+    "iops": 330000,
+    "price_hour": 4.118,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i8g.12xlarge",
+    "family": "i8g",
+    "arch": "arm64",
+    "vcpu": 48,
+    "ram_gib": 384,
+    "drives": 3,
+    "drive_gb": 3750,
+    "iops": 495000,
+    "price_hour": 4.1184,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "r6id.16xlarge",
+    "family": "r6id",
+    "arch": "x86_64",
+    "vcpu": 64,
+    "ram_gib": 512,
+    "drives": 2,
+    "drive_gb": 1900,
+    "iops": 268334,
+    "price_hour": 4.8384,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i3en.12xlarge",
+    "family": "i3en",
+    "arch": "x86_64",
+    "vcpu": 48,
+    "ram_gib": 384,
+    "drives": 4,
+    "drive_gb": 7500,
+    "iops": 400000,
+    "price_hour": 5.424,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
     "name": "i4i.16xlarge",
     "family": "i4i",
     "arch": "x86_64",
@@ -163,6 +792,283 @@
     "drive_gb": 3750,
     "iops": 440000,
     "price_hour": 5.491,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i8g.16xlarge",
+    "family": "i8g",
+    "arch": "arm64",
+    "vcpu": 64,
+    "ram_gib": 512,
+    "drives": 4,
+    "drive_gb": 3750,
+    "iops": 660000,
+    "price_hour": 5.4912,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "im4gn.16xlarge",
+    "family": "im4gn",
+    "arch": "arm64",
+    "vcpu": 64,
+    "ram_gib": 256,
+    "drives": 4,
+    "drive_gb": 7500,
+    "iops": 400000,
+    "price_hour": 5.82067,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i7ie.12xlarge",
+    "family": "i7ie",
+    "arch": "x86_64",
+    "vcpu": 48,
+    "ram_gib": 384,
+    "drives": 4,
+    "drive_gb": 7500,
+    "iops": 520000,
+    "price_hour": 6.2376,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "r6id.24xlarge",
+    "family": "r6id",
+    "arch": "x86_64",
+    "vcpu": 96,
+    "ram_gib": 768,
+    "drives": 4,
+    "drive_gb": 1425,
+    "iops": 402500,
+    "price_hour": 7.2576,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i4i.24xlarge",
+    "family": "i4i",
+    "arch": "x86_64",
+    "vcpu": 96,
+    "ram_gib": 768,
+    "drives": 6,
+    "drive_gb": 3750,
+    "iops": 660000,
+    "price_hour": 8.2368,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i8g.24xlarge",
+    "family": "i8g",
+    "arch": "arm64",
+    "vcpu": 96,
+    "ram_gib": 768,
+    "drives": 6,
+    "drive_gb": 3750,
+    "iops": 990000,
+    "price_hour": 8.2368,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i7ie.18xlarge",
+    "family": "i7ie",
+    "arch": "x86_64",
+    "vcpu": 72,
+    "ram_gib": 576,
+    "drives": 6,
+    "drive_gb": 7500,
+    "iops": 780000,
+    "price_hour": 9.3564,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "r6id.32xlarge",
+    "family": "r6id",
+    "arch": "x86_64",
+    "vcpu": 128,
+    "ram_gib": 1024,
+    "drives": 4,
+    "drive_gb": 1900,
+    "iops": 536668,
+    "price_hour": 9.6768,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-northeast-1"
+    ]
+   },
+   {
+    "name": "i3en.24xlarge",
+    "family": "i3en",
+    "arch": "x86_64",
+    "vcpu": 96,
+    "ram_gib": 768,
+    "drives": 8,
+    "drive_gb": 7500,
+    "iops": 800000,
+    "price_hour": 10.848,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i4i.32xlarge",
+    "family": "i4i",
+    "arch": "x86_64",
+    "vcpu": 128,
+    "ram_gib": 1024,
+    "drives": 8,
+    "drive_gb": 3750,
+    "iops": 880000,
+    "price_hour": 10.9824,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i7ie.24xlarge",
+    "family": "i7ie",
+    "arch": "x86_64",
+    "vcpu": 96,
+    "ram_gib": 768,
+    "drives": 8,
+    "drive_gb": 7500,
+    "iops": 1040000,
+    "price_hour": 12.4752,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i8g.48xlarge",
+    "family": "i8g",
+    "arch": "arm64",
+    "vcpu": 192,
+    "ram_gib": 1536,
+    "drives": 12,
+    "drive_gb": 3750,
+    "iops": 1980000,
+    "price_hour": 16.4736,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
+   },
+   {
+    "name": "i7ie.48xlarge",
+    "family": "i7ie",
+    "arch": "x86_64",
+    "vcpu": 192,
+    "ram_gib": 1536,
+    "drives": 16,
+    "drive_gb": 7500,
+    "iops": 2080000,
+    "price_hour": 24.9504,
     "regions": [
      "us-east-1",
      "us-west-2",
@@ -244,6 +1150,27 @@
     ]
    },
    {
+    "name": "c3-standard-4-lssd",
+    "family": "c3",
+    "arch": "x86_64",
+    "vcpu": 4,
+    "ram_gib": 16,
+    "drives": 1,
+    "drive_gb": 402.65,
+    "iops": 45000,
+    "price_hour": 0.242704,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
+   },
+   {
     "name": "c4a-highmem-4-lssd",
     "family": "c4a",
     "arch": "arm64",
@@ -283,6 +1210,27 @@
      "europe-west3",
      "asia-southeast1",
      "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
+   },
+   {
+    "name": "c3-standard-8-lssd",
+    "family": "c3",
+    "arch": "x86_64",
+    "vcpu": 8,
+    "ram_gib": 32,
+    "drives": 2,
+    "drive_gb": 402.65,
+    "iops": 90000,
+    "price_hour": 0.485408,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
      "asia-northeast1",
      "southamerica-east1"
     ]
@@ -340,7 +1288,7 @@
     "drives": 1,
     "drive_gb": 3221.23,
     "iops": 250000,
-    "price_hour": 1.1519,
+    "price_hour": 1.151931,
     "regions": [
      "us-central1",
      "us-east1",
@@ -369,6 +1317,27 @@
      "europe-west3",
      "asia-southeast1",
      "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
+   },
+   {
+    "name": "c3-standard-22-lssd",
+    "family": "c3",
+    "arch": "x86_64",
+    "vcpu": 22,
+    "ram_gib": 88,
+    "drives": 4,
+    "drive_gb": 402.65,
+    "iops": 180000,
+    "price_hour": 1.273227,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
      "asia-northeast1",
      "southamerica-east1"
     ]
@@ -426,7 +1395,7 @@
     "drives": 2,
     "drive_gb": 3221.23,
     "iops": 500000,
-    "price_hour": 2.3039,
+    "price_hour": 2.303862,
     "regions": [
      "us-central1",
      "us-east1",
@@ -435,6 +1404,27 @@
      "europe-west3",
      "asia-southeast1",
      "asia-northeast1"
+    ]
+   },
+   {
+    "name": "c3-standard-44-lssd",
+    "family": "c3",
+    "arch": "x86_64",
+    "vcpu": 44,
+    "ram_gib": 176,
+    "drives": 8,
+    "drive_gb": 402.65,
+    "iops": 180000,
+    "price_hour": 2.546455,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-northeast1",
+     "southamerica-east1"
     ]
    },
    {
@@ -468,7 +1458,7 @@
     "drives": 3,
     "drive_gb": 3221.23,
     "iops": 750000,
-    "price_hour": 3.25,
+    "price_hour": 3.250002,
     "regions": [
      "us-central1",
      "us-east1",
@@ -554,7 +1544,7 @@
     "drives": 4,
     "drive_gb": 3221.23,
     "iops": 1000000,
-    "price_hour": 4.6077,
+    "price_hour": 4.607724,
     "regions": [
      "us-central1",
      "us-east1",
@@ -583,6 +1573,27 @@
      "europe-west3",
      "asia-southeast1",
      "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
+   },
+   {
+    "name": "c3-standard-88-lssd",
+    "family": "c3",
+    "arch": "x86_64",
+    "vcpu": 88,
+    "ram_gib": 352,
+    "drives": 16,
+    "drive_gb": 402.65,
+    "iops": 400000,
+    "price_hour": 5.09291,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
      "asia-northeast1",
      "southamerica-east1"
     ]
@@ -618,7 +1629,7 @@
     "drives": 6,
     "drive_gb": 3221.23,
     "iops": 1500000,
-    "price_hour": 6.5,
+    "price_hour": 6.500005,
     "regions": [
      "us-central1",
      "us-east1",
@@ -630,6 +1641,27 @@
     ]
    },
    {
+    "name": "c3-standard-176-lssd",
+    "family": "c3",
+    "arch": "x86_64",
+    "vcpu": 176,
+    "ram_gib": 704,
+    "drives": 32,
+    "drive_gb": 402.65,
+    "iops": 800000,
+    "price_hour": 10.18582,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
+   },
+   {
     "name": "z3-highmem-88-highlssd",
     "family": "z3",
     "arch": "x86_64",
@@ -638,7 +1670,7 @@
     "drives": 12,
     "drive_gb": 3221.23,
     "iops": 3000000,
-    "price_hour": 13.0,
+    "price_hour": 13.000009,
     "regions": [
      "us-central1",
      "us-east1",
@@ -692,6 +1724,26 @@
   ],
   "instances": [
    {
+    "name": "L8as_v3",
+    "family": "Lasv3",
+    "arch": "x86_64",
+    "vcpu": 8,
+    "ram_gib": 64,
+    "drives": 1,
+    "drive_gb": 1920,
+    "iops": 60000,
+    "price_hour": 0.624,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
+   },
+   {
     "name": "L8s_v3",
     "family": "Lsv3",
     "arch": "x86_64",
@@ -707,6 +1759,26 @@
      "westeurope",
      "francecentral",
      "germanywestcentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
+   },
+   {
+    "name": "L16as_v3",
+    "family": "Lasv3",
+    "arch": "x86_64",
+    "vcpu": 16,
+    "ram_gib": 128,
+    "drives": 2,
+    "drive_gb": 1920,
+    "iops": 120000,
+    "price_hour": 1.248,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
      "southeastasia",
      "japaneast",
      "brazilsouth"
@@ -734,6 +1806,26 @@
     ]
    },
    {
+    "name": "L32as_v3",
+    "family": "Lasv3",
+    "arch": "x86_64",
+    "vcpu": 32,
+    "ram_gib": 256,
+    "drives": 4,
+    "drive_gb": 1920,
+    "iops": 240000,
+    "price_hour": 2.496,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
+   },
+   {
     "name": "L32s_v3",
     "family": "Lsv3",
     "arch": "x86_64",
@@ -749,6 +1841,26 @@
      "westeurope",
      "francecentral",
      "germanywestcentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
+   },
+   {
+    "name": "L48as_v3",
+    "family": "Lasv3",
+    "arch": "x86_64",
+    "vcpu": 48,
+    "ram_gib": 384,
+    "drives": 6,
+    "drive_gb": 1920,
+    "iops": 360000,
+    "price_hour": 3.744,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
      "southeastasia",
      "japaneast",
      "brazilsouth"
@@ -776,6 +1888,26 @@
     ]
    },
    {
+    "name": "L64as_v3",
+    "family": "Lasv3",
+    "arch": "x86_64",
+    "vcpu": 64,
+    "ram_gib": 512,
+    "drives": 8,
+    "drive_gb": 1920,
+    "iops": 480000,
+    "price_hour": 4.992,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
+   },
+   {
     "name": "L64s_v3",
     "family": "Lsv3",
     "arch": "x86_64",
@@ -791,6 +1923,26 @@
      "westeurope",
      "francecentral",
      "germanywestcentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
+   },
+   {
+    "name": "L80as_v3",
+    "family": "Lasv3",
+    "arch": "x86_64",
+    "vcpu": 80,
+    "ram_gib": 640,
+    "drives": 10,
+    "drive_gb": 1920,
+    "iops": 600000,
+    "price_hour": 6.24,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
      "southeastasia",
      "japaneast",
      "brazilsouth"

@@ -2,6 +2,8 @@ package sizing
 
 import (
 	"encoding/json"
+	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -124,6 +126,45 @@ func TestMessagesAreTheExplanation(t *testing.T) {
 	for i, m := range back {
 		if err := m.Validate(); err != nil || m.Text != ms[i].Text {
 			t.Errorf("%s back from JSON: %q, %v", m.Code, m.Text, err)
+		}
+	}
+}
+
+// Every code is recorded in decision T22, with its arguments: the list wellness words.
+func TestEveryCodeIsRecordedInT22(t *testing.T) {
+	b, err := os.ReadFile("../../docs/decisions.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, t22, ok := strings.Cut(string(b), "\n## T22 ")
+	if !ok {
+		t.Fatal("no decision T22")
+	}
+	t22, _, _ = strings.Cut(t22, "\n## T")
+	entries := map[string]string{}
+	for _, entry := range strings.Split(t22, "\n- `")[1:] {
+		c, rest, _ := strings.Cut(entry, "`")
+		entries[c] = rest
+	}
+	recorded := regexp.MustCompile("`([a-z_]+)`")
+	for c, spec := range codes {
+		entry, ok := entries[c]
+		if !ok {
+			t.Errorf("%s is not recorded in T22", c)
+			continue
+		}
+		var args []string
+		head, _, _ := strings.Cut(entry, "«")
+		for _, m := range recorded.FindAllStringSubmatch(head, -1) {
+			args = append(args, m[1])
+		}
+		if !slices.Equal(args, spec.args) {
+			t.Errorf("%s: T22 records the arguments %v, want %v", c, args, spec.args)
+		}
+	}
+	for c := range entries {
+		if _, ok := codes[c]; !ok && strings.Contains(c, ".") {
+			t.Errorf("T22 records %s, which is no code", c)
 		}
 	}
 }

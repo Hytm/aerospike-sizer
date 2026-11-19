@@ -71,7 +71,7 @@ locale (`make ci`), et on n'en ajoute pas.
   - bornes jamais silencieuses : toute valeur que le sizer ramène dans ses bornes revient dans `clamps`,
     que wellness dit dans son panneau (sizer T18 ; wellness T46) ;
   - choix de la machine, une seule règle : par fournisseur, parmi les types offerts dans la région, la
-    configuration confortable (chaque charge sous 85 % de son plafond, sinon celle qui tient) de plus
+    configuration confortable (chaque charge à 85 % au plus de son plafond, sinon celle qui tient) de plus
     petit score prix de référence × nœuds × (1 + nœuds ÷ 50), à égalité le moins de nœuds puis le nom ;
     wellness classe au prix d'un engagement d'un an en US East et le transmet au sizer (`pricing`) ; le
     sizer seul ouvre au prix à la demande (sizer T5, T21 ; wellness T23, T49) ;

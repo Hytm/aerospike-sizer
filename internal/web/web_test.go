@@ -76,6 +76,10 @@ func TestPagesAndAssets(t *testing.T) {
 	if want := `data-path="workload.reads_found" data-scale="100" min="0" max="100"`; !strings.Contains(body, want) {
 		t.Errorf("home: no %s input", want)
 	}
+	// The notes of the inputs the server bounded have their place under the prefill notice.
+	if !strings.Contains(body, `<div id="clamps"></div>`) {
+		t.Errorf("home: no place for the clamp notes")
+	}
 	for _, path := range []string{"/static/app.js", "/static/app.css"} {
 		if resp, _ := get(t, srv.URL+path); resp.StatusCode != http.StatusOK {
 			t.Errorf("%s: status %d", path, resp.StatusCode)

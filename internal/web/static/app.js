@@ -236,6 +236,8 @@
     renderPlacement(r);
     renderNetwork(r);
     renderRows(r);
+    // The inputs the server moved into their bounds, with what it used instead.
+    $("clamps").innerHTML = (r.clamps || []).map(function (c) { return '<div class="notice warn small">' + esc(c.note) + "</div>"; }).join("");
     $("notes").innerHTML = r.notes.map(function (n) { return '<div class="notice warn small">' + esc(n) + "</div>"; }).join("");
     if (!addNodesTouched && r.generic.nodes) $("addNodes").value = r.generic.nodes;
   }

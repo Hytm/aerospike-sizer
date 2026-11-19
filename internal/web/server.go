@@ -167,6 +167,7 @@ func (s *Server) defaults(w http.ResponseWriter, r *http.Request) {
 		"live_prices":   live,
 		"prices_as_of":  catalog.PricesAsOf,
 		"prices_region": catalog.PricesRegion,
+		"prices_terms":  catalog.PricesTerms,
 		"rates_as_of":   network.RatesAsOf,
 		"thresholds":    map[string]float64{"tight": sizing.TightLoad, "tolerance": sizing.RatioTolerance},
 		"version":       buildinfo.Version,

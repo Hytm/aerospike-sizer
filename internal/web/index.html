@@ -166,7 +166,12 @@
 
   <section class="panel" id="compare">
     <h3>Cost comparison</h3>
-    <p class="small muted">Each provider's cheapest comfortable configuration for the workload among the instance types its region offers (every load under 85 % of the usable capacity), which follows the form, then the configurations you add. arm64 marks the types with Arm processors (AWS Graviton, Google Axion). A configuration that is tight or short gets, when one exists, the cheapest instance type that fits comfortably with as many nodes. Changing the nodes of a recommendation keeps it as entered.</p>
+    <p class="small muted">Each provider's recommended configuration for the workload, which follows the form: among the instance types offered in the region chosen below, the one with the lowest reference price on the basis chosen below, plus 2 % per node so that dozens of small nodes do not win over a sensible cluster, at the node count that keeps every load under 85 % of the usable capacity (the rule Aerospike Wellness applies too); then the configurations you add. arm64 marks the types with Arm processors (AWS Graviton, Google Axion). A configuration that is tight or short gets, when one exists, the cheapest instance type that fits comfortably with as many nodes. Changing the nodes of a recommendation keeps it as entered.</p>
+    <div class="pricing" id="pricing">
+      <div class="f">Prices
+        <div class="seg" role="group" aria-label="Pricing basis" data-path="pricing.basis"><button type="button" data-v="on_demand">On demand</button><button type="button" data-v="commitment_1y">1-year commitment</button></div>
+      </div>
+    </div>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Configuration</th><th class="num">Nodes</th><th>Fit</th><th>Usage at peak<div class="small muted" id="ceilingsHead"></div></th><th class="num">Price<div class="small muted">$/node/hour</div></th><th class="num">Cost<div class="small muted">$/month</div></th><th></th></tr></thead>

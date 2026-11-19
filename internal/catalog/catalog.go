@@ -26,9 +26,32 @@ type Instance struct {
 	// IOPS is the planning figure per node, in 4 KiB blocks: half the 100 % random-write IOPS the
 	// provider publishes for the local drives of every AWS and Google type (decision T13, extended
 	// to AWS by T16), 60,000 per disk for Azure, which publishes no write figure (T16).
-	IOPS      float64  `json:"iops"`
-	PriceHour float64  `json:"price_hour"` // reference on-demand Linux price in PricesRegion
-	Regions   []string `json:"regions"`    // the provider's regions that offer the type (T19)
+	IOPS      float64 `json:"iops"`
+	PriceHour float64 `json:"price_hour"` // reference on-demand Linux price in PricesRegion
+	// Reserved1YHour is the reference effective hourly rate with a one-year commitment in
+	// PricesRegion (PricesTerms), aerospike-wellness's figure; ReservedVia is "savings-plan" when
+	// AWS sells no reserved instance for the type (decision T21).
+	Reserved1YHour float64  `json:"reserved_1y_hour"`
+	ReservedVia    string   `json:"reserved_via,omitempty"`
+	Regions        []string `json:"regions"` // the provider's regions that offer the type (T19)
+}
+
+// Basis is what a configuration is priced and recommended on (decision T21).
+type Basis string
+
+// Pricing bases.
+const (
+	OnDemand     Basis = "on_demand"     // on-demand Linux price: live in the region where looked up, else the reference
+	Commitment1Y Basis = "commitment_1y" // one-year commitment (PricesTerms): the reference in PricesRegion only
+)
+
+// Rate returns the reference hourly price of the type on a pricing basis: the one-year commitment
+// rate, or the on-demand one (also when the type has no commitment rate).
+func (i Instance) Rate(b Basis) float64 {
+	if b == Commitment1Y && i.Reserved1YHour > 0 {
+		return i.Reserved1YHour
+	}
+	return i.PriceHour
 }
 
 // OfferedIn tells whether the type is offered in a region of its provider.
@@ -93,12 +116,22 @@ var catalogJSON []byte
 // Providers is the embedded catalog, in display order.
 var Providers = mustProviders()
 
-// PricesAsOf is the date the reference prices were read: every one of them was checked against the
-// providers' published prices then (decisions T6, T13 and T19).
+// PricesAsOf is the date the reference prices were read, on demand and with a one-year commitment:
+// every one of them was checked against the providers' published prices then (decisions T6, T13,
+// T19 and T21).
 const PricesAsOf = "2026-11-19"
 
 // PricesRegion is the region whose public prices the reference holds, per provider (US East).
 var PricesRegion = map[string]string{"aws": "us-east-1", "azure": "eastus", "gcp": "us-east1"}
+
+// PricesTerms describes the one-year commitment priced, per provider: aerospike-wellness's terms (its
+// T23). AWS: Standard Reserved Instance without upfront, else (i7ie, i8g) EC2 Instance Savings Plan
+// without upfront (ReservedVia).
+var PricesTerms = map[string]string{
+	"aws":   "Standard Reserved Instance, 1 year, No Upfront",
+	"azure": "Reserved VM Instance, 1 year",
+	"gcp":   "Resource-based committed use discount, 1 year",
+}
 
 // Get returns a provider by key.
 func Get(key string) (*Provider, bool) {

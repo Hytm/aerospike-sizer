@@ -18,8 +18,8 @@ func TestEveryProviderIsComplete(t *testing.T) {
 		if _, ok := p.Region(p.DefaultRegion); !ok {
 			t.Errorf("%s: default region %q is not listed", p.Key, p.DefaultRegion)
 		}
-		if PricesRegion[p.Key] == "" {
-			t.Errorf("%s: no reference price region", p.Key)
+		if PricesRegion[p.Key] == "" || PricesTerms[p.Key] == "" {
+			t.Errorf("%s: no reference price region or one-year terms", p.Key)
 		}
 		for _, r := range p.Regions {
 			if len(p.Offered(r.ID)) == 0 {
@@ -37,6 +37,7 @@ func TestEveryProviderIsComplete(t *testing.T) {
 			if i.Arch != "x86_64" && i.Arch != "arm64" {
 				t.Errorf("%s: arch %q", i.Name, i.Arch)
 			}
+			checkCommitment(t, p.Key, i)
 			// The reference price is read in PricesRegion: the type is offered there.
 			if !i.OfferedIn(PricesRegion[p.Key]) {
 				t.Errorf("%s: not offered in %s, where its reference price is read", i.Name, PricesRegion[p.Key])
@@ -53,6 +54,34 @@ func TestEveryProviderIsComplete(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// checkCommitment checks the one-year commitment rate of a type: a plausible discount on the
+// on-demand price (20 to 50 %, as aerospike-wellness checks it), a Savings Plan only for the AWS
+// types without a reserved instance (i7ie, i8g), and the rate each pricing basis takes (T21).
+func checkCommitment(t *testing.T, provider string, i Instance) {
+	t.Helper()
+	if discount := 1 - i.Reserved1YHour/i.PriceHour; discount < 0.2 || discount > 0.5 {
+		t.Errorf("%s: one-year rate %v for %v on demand, a %.1f %% discount", i.Name, i.Reserved1YHour, i.PriceHour, discount*100)
+	}
+	want := ""
+	if provider == "aws" && (i.Family == "i7ie" || i.Family == "i8g") {
+		want = "savings-plan"
+	}
+	if i.ReservedVia != want {
+		t.Errorf("%s: reserved via %q, want %q", i.Name, i.ReservedVia, want)
+	}
+	if i.Rate(OnDemand) != i.PriceHour || i.Rate(Commitment1Y) != i.Reserved1YHour || i.Rate("") != i.PriceHour {
+		t.Errorf("%s: rates %v on demand, %v for one year", i.Name, i.Rate(OnDemand), i.Rate(Commitment1Y))
+	}
+}
+
+// A type without a one-year rate is priced on demand on either basis.
+func TestRateFallsBackOnDemand(t *testing.T) {
+	i := Instance{PriceHour: 1}
+	if i.Rate(Commitment1Y) != 1 || i.Rate(OnDemand) != 1 {
+		t.Errorf("rates %v, %v", i.Rate(Commitment1Y), i.Rate(OnDemand))
 	}
 }
 

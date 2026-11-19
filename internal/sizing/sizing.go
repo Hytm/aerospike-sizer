@@ -136,6 +136,23 @@ func (w Workload) FoundShare() float64 {
 
 func clamp(v, lo, hi float64) float64 { return min(max(v, lo), hi) }
 
+// RatioTolerance is the relative error a ratio of a demand over a capacity may carry from the
+// floating-point arithmetic that computed it: a rate divided twice, a mean record multiplied back
+// by its record count, a product taken in another order than aerospike-wellness's. A ratio past a
+// whole number by no more than this share of it is that number, so that a demand that is an exact
+// multiple of a node, of a 4 KiB block or of a sprig is not given one more. It is thousands of times
+// the error of the arithmetic and one byte in a terabyte of demand; aerospike-wellness rounds with
+// the same (T18).
+const RatioTolerance = 1e-12
+
+// ceilRatio rounds a ratio up to a whole number, within RatioTolerance. It stays a float so that a
+// caller can bound it before converting it to an int.
+func ceilRatio(r float64) float64 { return math.Ceil(r * (1 - RatioTolerance)) }
+
+// exceeds tells whether a load passes a limit by more than RatioTolerance: the test that matches
+// ceilRatio, so that Evaluate never finds short the nodes Size counted.
+func exceeds(load, limit float64) bool { return load*(1-RatioTolerance) > limit }
+
 // OnDevice tells whether records are written to a device.
 func (w Workload) OnDevice() bool { return w.Engine == Device || w.Persist }
 
@@ -395,7 +412,7 @@ func Detailed(w Workload, h Hypotheses) Detail {
 		// serves it (the cache share is measured over the reads that reach the storage); one that
 		// finds nothing stops at the primary index. Without a record, or with records of no bytes,
 		// no read finds anything on the device.
-		d.BlocksPerRead = max(math.Ceil(stored/DeviceBlockBytes), 1)
+		d.BlocksPerRead = max(ceilRatio(stored/DeviceBlockBytes), 1)
 		d.ReadIOPS = w.ReadsPerSec * w.FoundShare() * (1 - h.CacheHit) * d.BlocksPerRead
 	}
 	if w.IndexOn == OnFlash {
@@ -431,7 +448,7 @@ func Detailed(w Workload, h Hypotheses) Detail {
 // 64 entries at the fill share, over the partitions, rounded up to a power of two within the
 // configurable range.
 func sprigsPerPartition(objects, fill float64) int {
-	need := math.Ceil(objects / (RecordsPerSprig * fill) / Partitions)
+	need := ceilRatio(objects / (RecordsPerSprig * fill) / Partitions)
 	if need >= MaxSprigsPerPart {
 		return MaxSprigsPerPart
 	}
@@ -495,14 +512,15 @@ func Size(d, node Amounts, h Hypotheses, l Layout) Sizing {
 			s.Need[c] = 0
 			continue
 		}
-		ratio := demand / usable.Of(c)
-		if usable.Of(c) <= 0 || ratio > MaxNodes {
+		// Bounded before the conversion to int, which a count past the integers would overflow.
+		whole := ceilRatio(demand / usable.Of(c))
+		if usable.Of(c) <= 0 || whole > MaxNodes {
 			if failed == "" {
 				failed = c
 			}
 			continue
 		}
-		need := nodesFor(int(math.Ceil(ratio)), h, l)
+		need := nodesFor(int(whole), h, l)
 		s.Need[c] = need
 		if need > s.Nodes {
 			s.Nodes, s.Binding = need, c

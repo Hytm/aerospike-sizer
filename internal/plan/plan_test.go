@@ -220,6 +220,21 @@ func TestGenericChecksAndNotes(t *testing.T) {
 	}
 }
 
+// A demand that is an exact multiple of the generic node is sized at that count, and its load of
+// 100 % is tight, not short (T18).
+func TestGenericAtAnExactMultipleOfTheNode(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = nil
+	req.Workload = sizing.Workload{ObjectSize: 100, Objects: 1000, ReadsPerSec: 504000, WritesPerSec: 504000, RF: 1, Engine: sizing.Memory}
+	req.Node = Node{VCPU: 16, RAMGiB: 1024, StorageTB: 10, IOPS: 1e6}
+	req.Hypotheses.Growth, req.Hypotheses.Loss = 0, sizing.NoLoss
+	req.Network.AZs = 1
+	g := Compute(req, referenceQuoter{}).Generic
+	if g.Nodes != 7 || g.Binding != sizing.ByCPU || len(g.Checks) != 1 || g.Checks[0] != "CPU tight: 100% of the usable capacity." {
+		t.Errorf("generic = %d nodes bound by %s, checks %q; want 7 by cpu, tight", g.Nodes, g.Binding, g.Checks)
+	}
+}
+
 func TestUnknownRowsAreIgnoredWithANote(t *testing.T) {
 	req := DefaultRequest()
 	req.Auto = []string{"aws"}

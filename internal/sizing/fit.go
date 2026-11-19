@@ -71,9 +71,9 @@ func Evaluate(d, node Amounts, nodes int, h Hypotheses, l Layout) Fit {
 		load := demand / capacity
 		f.Load[c] = load
 		switch {
-		case load > 1:
+		case exceeds(load, 1):
 			flag(Short, "Not enough %s: %s needed vs %s usable (%s%s).", c.label(), c.amount(demand), c.amount(capacity), h.ceilingText(c), down)
-		case load > TightLoad:
+		case exceeds(load, TightLoad):
 			flag(Tight, "%s tight: %s of the usable capacity.", capitalize(c.label()), units.Pct(load))
 		}
 	}

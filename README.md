@@ -56,6 +56,10 @@ The form can be prefilled from the URL, one parameter per field named as in the 
 `pricing.basis=commitment_1y` and `pricing.regions.<provider>=<region>` for the comparison); Aerospike
 Wellness links here that way with the parameters of an analysed cluster.
 
+Every text of an answer (explanation, fit checks, notes) also comes as a message with a stable code
+and its values (`explain_messages`, `check_messages`, `fit.messages`, `note_messages`), so that a
+caller can word it in its own language; Aerospike Wellness does so in French and English.
+
 The API serves the loopback names and the configured listen address only. Every result is an estimate:
 the assumptions behind it are shown and editable in the interface. An input outside its bounds is sized
 at the nearest bound, with a note that says so (`clamps` in the API).

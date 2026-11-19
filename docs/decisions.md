@@ -38,7 +38,8 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   (`internal/sizing`, `internal/network`, `internal/plan`), testés en Go ; le front n'affiche que ce que
   renvoie `POST /api/plan` (le formulaire entier en une requête, réponse JSON avec les explications ; un
   champ absent de la requête garde la valeur du formulaire d'ouverture, amendé le 2026-11-19, T18 :
-  champs absents). `GET /api/defaults` donne le catalogue et le formulaire d'ouverture.
+  champs absents ; chaque explication, remarque et note avec son code et ses valeurs, amendé le
+  2026-11-19, T22). `GET /api/defaults` donne le catalogue et le formulaire d'ouverture.
 - L'API n'accepte que `Content-Type: application/json` : un autre site ne peut pas y poster sans
   requête préalable, que le serveur ne permet jamais. Fournisseur, région et instance sont validés contre
   le catalogue avant toute recherche de prix.
@@ -423,7 +424,9 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
     été donné, la note ce qui a été retenu, comme pour tout autre champ.
   - wellness lit `field`, `given` et `used`, jamais `note`, et écrit ses propres textes en français et en
     anglais dans son panneau ; il saute `workload.rf`, déjà dit par sa note sur les copies au-delà de 8
-    (T17). Les textes du sizer qui atteignent wellness restent en anglais à ce stade.
+    (T17). Les textes du sizer qui atteignent wellness restent en anglais à ce stade (amendé le
+    2026-11-19, T22 : l'explication, les remarques et les notes portent un code que wellness écrit en
+    français et en anglais ; les bornes restent écrites par wellness depuis `field`, `given` et `used`).
 - **Entrées d'index secondaire : borne de 10⁴ à 10⁹ par enregistrement.** wellness garde les octets des
   index secondaires et de set quand il fusionne des objets (sa T26), et un cluster de peu d'objets porte
   ses octets d'index sur peu d'enregistrements : tous deux arrivent ici comme beaucoup d'entrées par
@@ -578,7 +581,9 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   outil (wellness T46) : celle du sizer omettait la perte à survivre, les copies stockées et les bornes,
   celle de wellness les plafonds, les blocs de 4 Kio, le cache nul et les IOPS de planification.
 - Les textes du sizer qui atteignent wellness (explication, adéquation, notes, bornes) restent en anglais
-  à ce stade ; leur traduction est l'objet d'un tour suivant.
+  à ce stade ; leur traduction est l'objet d'un tour suivant (amendé le 2026-11-19, T22 : chaque
+  explication, remarque et note porte un code et ses valeurs, que wellness écrit en français et en
+  anglais).
 - Effet : aucun chiffre ne change.
 
 ### Notes de bornes près de la borne, liste partagée complétée
@@ -826,7 +831,8 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
     en tête de `notes` (« Unknown pricing basis "reserved": on-demand prices used. », « AWS: unknown
     region "mars-1" for the recommendation, eu-west-3 · Paris used instead. ») : des replis
     d'énumérations, pas des bornes (`clamps`, T18). En anglais comme les autres textes qui atteignent
-    wellness ; le tour des textes leur donnera un code.
+    wellness ; le tour des textes leur donnera un code (amendé le 2026-11-19, T22 :
+    `note.unknown_pricing_basis` et `note.unknown_pricing_region`).
   - Les configurations ajoutées gardent leur région ; la base chiffre toutes les lignes, alternatives
     comprises.
   - Le prix d'un engagement d'un an est un prix de référence US East, sans recherche live, quelle que
@@ -894,3 +900,166 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
 - Compatibilité : changement additif. Un sizer plus ancien ignore `pricing` (champ inconnu) et donne
   ses choix d'avant ; un wellness plus ancien n'envoie pas `pricing` et reçoit les défauts ; aucun champ
   ne change de sens. Déployer le sizer d'abord, puis wellness dans la même fenêtre.
+
+## T22 — Textes de l'API en codes, que wellness écrit en français et en anglais
+
+- Choix de l'utilisateur (2026-11-19, revue croisée des deux outils ; décision T50 de wellness) :
+  l'explication, les remarques d'adéquation et les notes du sizer s'affichaient en anglais sur les pages
+  françaises de wellness (panneau du sizer). Trois voies : (a) le sizer reçoit une langue et répond en
+  français, ce qui met du français dans un dépôt public à l'interface anglaise et double le glossaire de
+  wellness sans test de parité ; (b) le sizer envoie un code et ses valeurs à côté de l'anglais inchangé,
+  et wellness les écrit avec son `internal/i18n` ; (c) une exception consignée, le panneau restant en
+  anglais. Choix : (b). wellness garde l'explication du sizer dans son panneau, traduite : c'est le seul
+  endroit qui dit pourquoi le nombre de nœuds du sizer diffère du sien. La colonne de région du panneau
+  montre l'identifiant de la région du fournisseur (`eu-west-3`) et non son libellé
+  (`eu-west-3 · Paris`), dont le lieu est en anglais.
+- **Message** (`sizing.Message`, `internal/sizing/message.go`) : `{code, text, args, parts}`. `code` est
+  stable ; `text` est l'anglais, identique octet pour octet au champ texte qu'il accompagne ; `args` sont
+  les valeurs citées, nombres et chaînes JSON, absent pour un code sans argument ; `parts` sont les
+  éléments que la phrase liste (`part.*`, `ceiling.*`, `loss.*`), joints par « , » à la place de
+  `{parts}`. L'anglais est rendu depuis le message, en un seul endroit par code ; l'interface reste en
+  anglais seul.
+- **Champs ajoutés à la réponse de `POST /api/plan`**, toujours présents :
+  - `generic.explain_messages` : les phrases `explain.*`, dont `generic.explain` est le texte joint par
+    une espace ;
+  - `generic.check_messages` : les `check.*`, un pour un avec `generic.checks`, tous deux vides quand le
+    nombre générique est confortable ou nul ;
+  - `rows[].fit.messages` (alternatives comprises) : les `check.*`, un pour un avec `fit.checks` ;
+  - `note_messages` : les `note.*`, un pour un avec `notes`, dans le même ordre.
+- **Non codés** : `clamps[].note`, que wellness écrit lui-même depuis `field`, `given` et `used` (T18) ;
+  `network.note` et `network.warnings`, que wellness ne montre pas ; `prices_terms` de `/api/defaults` ;
+  les erreurs HTTP.
+- **Liste fermée ; un code ne change jamais de sens.** Tout texte nouveau de ces champs reçoit un code
+  nouveau, dans `codes` (`internal/sizing/message.go`), dans la liste ci-dessous et chez wellness (sa
+  T50) ; changer le sens ou les arguments d'un code est un changement de contrat, consigné dans les deux
+  décisions. Un nom d'argument a la même nature dans tous les codes. wellness retombe sur `text` pour un
+  code qu'il ne connaît pas, et sur les champs texte avec un sizer sans codes.
+- **Tests.** `TestEveryTextHasACode` (`internal/plan`) calcule des scénarios qui, ensemble, emploient
+  chaque code : il échoue si un texte part sans son message, si un message sort de la liste (`Validate` :
+  code connu, ses arguments et aucun autre, de la nature attendue, éléments quand le code en liste,
+  anglais du code) ou si un code n'est employé par aucun scénario. `TestEveryCodeIsRecordedInT22` vérifie
+  que la liste ci-dessous porte chaque code avec ses arguments. Les tests de textes existants passent sans
+  changement.
+- **Natures des arguments** (l'anglais du sizer entre parenthèses) :
+  - `resource` : `storage`, `ram`, `cpu` ou `iops` (« storage », « RAM », « CPU », « IOPS ») ;
+  - `amount` (`demand`, `needed`, `usable`) : une quantité de la ressource du message (son argument
+    `resource`) : octets pour le stockage (unités décimales) et la RAM (unités binaires), vCPU (au
+    dixième), IOPS ; dans `explain.iops`, l'anglais écrit `usable` sans unité ;
+  - `bytes` : des octets (unités décimales pour ce qui est sur les disques, `part.records` et
+    `part.flash_*`, binaires pour la mémoire) ;
+  - `count` (`count`, `tps`, `ops_per_vcpu`, `sprigs`, `support_sprigs`, `blocks`, `rf`, `nodes`,
+    `min_nodes`, `racks`, `azs`) : un nombre, écrit à l'unité ; `count` est un débit d'IOPS de 4 Kio ;
+  - `share` (`growth`, `fill`, `load`, `os_reserve_pct`) : une part, 1 pour 100 % (la croissance va
+    jusqu'à 100), écrite au pourcent ;
+  - `share_tenth` (`found`) : une part mesurée, écrite au dixième de pourcent ;
+  - `gib` (`os_reserve_gib`) : des Gio ;
+  - `name` (`provider`, `region`, `region_label`, `instance`, `basis`, `default_region`,
+    `default_region_label`) : écrit tel quel : libellé du fournisseur (la clé donnée pour un fournisseur
+    inconnu), identifiant de région (la valeur donnée quand elle est inconnue), libellé de région
+    `id · lieu`, type d'instance, base donnée.
+- **Éléments listés** :
+  - `explain.storage` : `part.records`, `part.flash_index` ou `part.flash_index_support`,
+    `part.flash_sindex`, ceux qui ont des octets, dans cet ordre ;
+  - `explain.ram` : `part.index`, `part.sprigs`, `part.sindex`, `part.set_index`,
+    `part.records_in_memory`, de même ;
+  - `explain.iops` : l'un de `part.reads`, `part.reads_blocks`, `part.reads_found`,
+    `part.reads_blocks_found`, puis `part.writes` et `part.flash_index_io`, ceux qui ont des IOPS ;
+  - `explain.loss` : `loss.node` ou `loss.rack` ;
+  - `check.short` : `ceiling.<ressource>`, puis `loss.node` ou `loss.rack` quand une perte est
+    planifiée.
+
+### Liste des codes
+
+Chaque code, ses arguments dans l'ordre, puis son anglais : `{nom}` est la valeur d'un argument,
+`{parts}` les éléments joints, `{Resource}` la ressource à majuscule initiale ; les guillemets droits
+entourent une valeur citée à la façon de `%q` en Go. Explication du dimensionnement générique, éléments
+de la demande, plafonds et pertes, remarques d'adéquation, notes :
+
+- `explain.unusable` (`resource`) : « No node count works: the generic node has no usable {resource} once
+  the ceilings and the OS reserve are applied. »
+- `explain.too_little` (`resource`) : « No sensible node count works: the generic node offers too little
+  {resource} for this workload. »
+- `explain.storage` (`resource`, `demand`, `usable`, `fill`, `rf`, `growth`) : « Disk storage drives the
+  sizing: {demand} to place ({parts}; RF{rf}, {growth} growth included), {usable} usable per node ({fill}
+  fill). »
+- `explain.ram` (`resource`, `demand`, `usable`, `fill`, `rf`, `growth`, `os_reserve_gib`,
+  `os_reserve_pct`) : « Memory drives the sizing: {demand} ({parts}; RF{rf}, {growth} growth included),
+  {usable} usable per node ({fill} of RAM after the OS reserve of {os_reserve_gib} or
+  {os_reserve_pct}). »
+- `explain.records_in_memory` (`fill`) : « That ceiling weighs the RAM fill of the indexes with the
+  {fill} storage fill of the records in memory. »
+- `explain.cpu` (`resource`, `tps`, `growth`, `demand`, `ops_per_vcpu`, `usable`, `fill`) : « CPU drives
+  the sizing: {tps} transactions/s at the horizon ({growth} growth) need {demand} at {ops_per_vcpu} per
+  vCPU, {usable} usable per node ({fill} CPU). »
+- `explain.iops` (`resource`, `demand`, `usable`, `fill`, `rf`, `growth`) : « Device throughput drives
+  the sizing: {demand} of 4 KiB ({parts}; RF{rf}, {growth} growth included), {usable} usable per node
+  ({fill} of the sustained IOPS). »
+- `explain.floor` (`min_nodes`) : « Storage, RAM, CPU and IOPS fit on fewer nodes: the topology floor
+  (RF+1 = {min_nodes}) sets the minimum for fault tolerance. »
+- `explain.loss` (aucun argument) : « The ceilings still hold with {parts}. »
+- `explain.rounded` (`nodes`, `racks`) : « Rounded up to {nodes} nodes so that each of the {racks} racks
+  holds the same number. »
+- `part.records` (`bytes`) : « records {bytes} »
+- `part.flash_index` (`bytes`, `sprigs`) : « primary index on flash {bytes} with {sprigs} sprigs per
+  partition »
+- `part.flash_index_support` (`bytes`, `sprigs`, `support_sprigs`) : « primary index on flash {bytes}
+  with {sprigs} sprigs per partition (above {support_sprigs}: ask Aerospike Support) »
+- `part.flash_sindex` (`bytes`) : « secondary indexes on flash {bytes} »
+- `part.index` (`bytes`) : « primary index {bytes} »
+- `part.sprigs` (`bytes`) : « sprigs of the flash index {bytes} »
+- `part.sindex` (`bytes`) : « secondary indexes {bytes} »
+- `part.set_index` (`bytes`) : « set indexes {bytes} »
+- `part.records_in_memory` (`bytes`) : « records in memory {bytes} »
+- `part.reads` (`count`) : « record reads {count} »
+- `part.reads_blocks` (`count`, `blocks`) : « record reads of {blocks} blocks {count} »
+- `part.reads_found` (`count`, `found`) : « record reads for the {found} of the reads that find a record
+  {count} »
+- `part.reads_blocks_found` (`count`, `blocks`, `found`) : « record reads of {blocks} blocks for the
+  {found} of the reads that find a record {count} »
+- `part.writes` (`count`) : « record writes in 4 KiB blocks with defrag {count} »
+- `part.flash_index_io` (`count`) : « flash index blocks {count} »
+- `ceiling.storage` (`fill`) : « {fill} fill »
+- `ceiling.ram` (`fill`, `os_reserve_gib`, `os_reserve_pct`) : « {fill} of RAM after the OS reserve of
+  {os_reserve_gib} or {os_reserve_pct} »
+- `ceiling.cpu` (`fill`) : « {fill} CPU »
+- `ceiling.iops` (`fill`) : « {fill} of the sustained IOPS »
+- `loss.node` (aucun argument) : « one node down »
+- `loss.rack` (aucun argument) : « one rack down »
+- `check.topology` (`nodes`, `min_nodes`) : « Topology: {nodes} node(s) < RF+1 ({min_nodes} min). »
+- `check.fewer_azs` (`azs`) : « Fewer nodes than configured AZs ({azs}): no real multi-AZ spread. »
+- `check.uneven_racks` (`nodes`, `racks`) : « {nodes} nodes do not split evenly over {racks} racks. »
+- `check.no_usable` (`resource`) : « No usable {resource} on this node shape. »
+- `check.short` (`resource`, `needed`, `usable`) : « Not enough {resource}: {needed} needed vs {usable}
+  usable ({parts}). »
+- `check.tight` (`resource`, `load`) : « {Resource} tight: {load} of the usable capacity. »
+- `check.comfortable` (aucun argument) : « Comfortable margin on storage, RAM, CPU and IOPS. »
+- `note.unknown_pricing_basis` (`basis`) : « Unknown pricing basis "{basis}": on-demand prices used. »
+- `note.unknown_pricing_region` (`provider`, `region`, `default_region`, `default_region_label`) :
+  « {provider}: unknown region "{region}" for the recommendation, {default_region_label} used instead. »
+- `note.flash_index_in_ram` (aucun argument) : « The primary index is planned in RAM: index-type flash
+  does not work with the memory engine (configuration reference, 7.0). »
+- `note.rack_loss_as_node` (aucun argument) : « The ceilings are kept after the loss of one node: losing
+  a whole rack can only be planned for with rack-aware AZs in a single region. »
+- `note.no_instance` (`provider`, `region`, `region_label`) : « {provider}: no instance type of the
+  catalog offered in {region_label} suits this workload. »
+- `note.unknown_provider` (`provider`) : « Unknown provider "{provider}" ignored. »
+- `note.unknown_row` (`provider`, `region`, `instance`) : « {provider}: unknown region "{region}" or
+  instance type "{instance}" ignored. »
+- `note.not_offered` (`provider`, `instance`, `region`, `region_label`) : « {provider}: instance type
+  "{instance}" is not offered in {region_label}, ignored. »
+
+### Compatibilité et effets
+
+- Changement additif : requête inchangée, champs ajoutés à la réponse, aucun champ ne change de sens. Un
+  wellness plus ancien ignore les champs nouveaux ; un wellness qui les lit garde l'anglais face à un
+  sizer plus ancien. Déployer le sizer d'abord.
+- Aucun chiffre ni texte anglais ne change : sur 6 016 requêtes (16 cas particuliers, 6 000 tirées au
+  hasard), l'explication, les remarques du nombre générique, des lignes et des
+  alternatives, les notes et les notes de bornes sont les mêmes que sur `main`, octet pour octet.
+- La réponse grossit d'environ 1 Ko : 5 446 → 6 366 octets pour le formulaire d'ouverture (+17 %),
+  5 437 → 6 357 avec la base et les régions de wellness, 5 535 → 6 785 avec la perte d'un rack et l'index
+  sur flash (+23 %).
+- La liste « Dimensionnement partagé » des deux `CLAUDE.md` gagne la ligne des textes du sizer (sizer
+  T22 ; wellness T50).
+- T18 et T21, qui laissaient ces textes en anglais pour wellness, sont amendées, ainsi que T4 (réponse de
+  l'API).

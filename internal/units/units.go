@@ -28,17 +28,25 @@ func scaled(b, base float64, names []string) string {
 }
 
 // Count formats a rounded number with thousands separators: 164,000.
-func Count(n float64) string {
-	s := strconv.FormatFloat(math.Abs(math.Round(n)), 'f', 0, 64)
+func Count(n float64) string { return Grouped(math.Round(n), 0) }
+
+// Grouped formats a number to the given decimals, with thousands separators: 8,388,608.30.
+func Grouped(n float64, decimals int) string {
+	s := strconv.FormatFloat(math.Abs(n), 'f', decimals, 64)
+	whole, frac, _ := strings.Cut(s, ".")
 	var b strings.Builder
-	if n < 0 && s != "0" {
+	if n < 0 && strings.Trim(s, "0.") != "" {
 		b.WriteByte('-')
 	}
-	for i, c := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
+	for i, c := range whole {
+		if i > 0 && (len(whole)-i)%3 == 0 {
 			b.WriteByte(',')
 		}
 		b.WriteRune(c)
+	}
+	if frac != "" {
+		b.WriteByte('.')
+		b.WriteString(frac)
 	}
 	return b.String()
 }

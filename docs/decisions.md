@@ -773,7 +773,8 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   les mêmes besoins, la comparaison de machines de wellness, les données de sa synthèse Claude et les
   lignes recommandées du sizer (que le panneau du sizer de wellness affiche aussi) nomment le même type
   et le même nombre de nœuds.
-- **Écarts relevés le 2026-11-19** (sur les prototypes de T18 et T19, avant T20) :
+- **Écarts relevés le 2026-11-19** (sur `main` des deux outils : T18 à T20 ici, T46 à T48 chez
+  wellness) :
   - base de prix : wellness classait au prix d'un engagement d'un an, le sizer au prix de référence à
     la demande, jamais au prix live qu'il affiche ; tous deux en US East (`PricesRegion`) ;
   - région : celle des lignes automatiques du sizer (eu-west-3, europe-west1, francecentral) ne servait
@@ -791,9 +792,9 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
     diffèrent (i4i.24xlarge et i8g.24xlarge, toutes deux à 8,2368 $/h à la demande) ;
   - déjà communs : plancher RF + 1, AZ = racks, rack-aware au-delà d'un rack, arrondi aux racks.
   - Mesure sur les 294 clusters réels des analyses de wellness (les requêtes qu'il envoie, prix de
-    référence) : même type AWS 28, Google 98, Azure 216 ; même type et nombre de nœuds 1, 7, 85 ; aucun
-    cluster identique sur les trois fournisseurs ; la première option de la synthèse Claude égale la
-    ligne du sizer pour 8.
+    référence) : même type AWS 26, Google 100, Azure 216 ; même type et nombre de nœuds 1, 7, 87 ;
+    aucun cluster identique sur les trois fournisseurs ; la première option de la synthèse Claude égale
+    la ligne du sizer pour 8 (les chiffres « avant » de la T49 de wellness).
 - **Choix de l'utilisateur** :
   - marge : le nombre confortable partout, celui qui tient seulement quand aucun type du fournisseur
     n'est confortable ;
@@ -845,7 +846,7 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   - wellness envoie toujours `pricing` = `{commitment_1y, us-east-1, us-east1, eastus}` (sa T49) : son
     panneau montre alors les types et nombres de nœuds de sa comparaison de machines, aux prix 1 an de
     référence. La région compte autant que la base : r6id n'étant pas proposé à Paris, la base seule
-    ne donne le même type AWS que pour 97 clusters sur 294.
+    ne donne le même type AWS que pour 112 clusters sur 294 (68 sans `pricing`).
 - **Interface** : au-dessus de la comparaison, un sélecteur « Prices » (On demand, 1-year commitment)
   et une région de recommandation par fournisseur. Un prix 1 an porte « reference · 1 year », avec ses
   conditions en infobulle et sans bouton ↻ ; la note des prix suit la base ; le texte de la comparaison
@@ -868,18 +869,22 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
 - **Effets** :
   - exemple par défaut inchangé (i8g.xlarge × 12, c3-standard-22-lssd × 3, L8as_v3 × 9) ; à la base 1 an,
     les mêmes types coûtent 1 949, 1 757 et 2 623 $/mois de calcul ;
-  - les 294 requêtes réelles envoyées sans `pricing` donnent les mêmes 882 lignes qu'avant (type et
-    nombre de nœuds, rejouées avant et après ce changement) ;
-  - avec la base et les régions de wellness : même type AWS 272, Google 276, Azure 288 ; même type et
-    nombre de nœuds 258, 249, 264 ; 247 clusters identiques sur les trois fournisseurs ; la première
-    option de la synthèse Claude égale la ligne du sizer pour 258. Quand le choix est le même (771
-    lignes), le coût mensuel 1 an de wellness égale le calcul du sizer au centime ;
-  - les 47 clusters qui différaient encore avaient, à la mesure, une demande différente dans les deux
-    outils : index primaire sur flash (24, mesurés avant T20, qui aligne depuis l'index sur flash, et
-    non remesurés), entrées d'index secondaire approchées (8), namespaces de RF différents (10),
-    namespaces device et mémoire dimensionnés comme un seul moteur (5) ;
-  - côté wellness (sa T49), les recommandations coûtent 17 à 19,5 % de plus en 1 an, surtout par la
-    marge de 85 %, et son panneau affiche les prix 1 an de référence US East au lieu des prix live.
+  - les 294 requêtes réelles envoyées sans `pricing` donnent les mêmes 882 lignes que `main` (type,
+    nombre de nœuds, région et coût, rejouées sur les deux) ;
+  - avec la base et les régions de wellness (cette branche et celle de wellness, T20 et T48 compris,
+    rejouées comme sa T49 et avec les mêmes chiffres) : même type AWS 287, Google 280, Azure 290 ;
+    même type et nombre de nœuds 284, 278, 284 ; 276 clusters identiques sur les trois fournisseurs ;
+    la première option de la synthèse Claude égale la ligne du sizer pour 284 ; toutes les lignes du
+    sizer sont « ok ». Pour les 846 lignes identiques, le coût mensuel 1 an de wellness égale le calcul
+    du sizer au centime ;
+  - les 18 clusters qui diffèrent encore ont tous des namespaces en mémoire et sur disque, que le sizer
+    planifie d'un seul moteur et que wellness note dans ses besoins (« records are not all placed the
+    same way », sa T45) : un écart de la demande, déjà noté, non de la règle. 7 d'entre eux ont aussi
+    des index secondaires et 6 des RF différents ; tout cluster dont la demande diffère entre les deux
+    outils porte cette note, et aucun des 18 n'a d'index primaire sur flash (aligné par T20) ;
+  - côté wellness (sa T49), les recommandations coûtent de 17 à 23 % de plus en 1 an (cumul AWS
+    +23,3 %, Google +19,2 %, Azure +17,0 %), surtout par la marge de 85 %, et son panneau affiche les
+    prix 1 an de référence US East au lieu des prix live.
 - **Limites** : le classement reste sur les prix de référence US East ; à la demande dans une autre
   région, un prix live peut faire différer le badge « lowest cost » de la recommandation, comme avant.
   Les taux 1 an vieillissent entre deux relevés : le test de parité ne voit que l'écart entre les deux

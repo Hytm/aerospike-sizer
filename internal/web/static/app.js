@@ -559,7 +559,7 @@
     var live = providers.filter(function (p) { return livePrices[p.key]; }).map(function (p) { return p.label; });
     var reference = "the reference on-demand list price in US East read on " + pricesAsOf;
     if (!live.length) return "Prices: " + reference + " applies to every configuration (live lookups are off on this server).";
-    return "Prices: " + live.join(" and ") + " are read live for the chosen region (ec2.shop, Azure Retail Prices API); otherwise, and for the other providers, " + reference + " applies.";
+    return "Prices: " + live.join(" and ") + " are read live for the chosen region (AWS price list, Azure Retail Prices API); otherwise, and for the other providers, " + reference + " applies.";
   }
 
   // ---- Start ----

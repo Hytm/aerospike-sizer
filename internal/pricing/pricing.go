@@ -58,13 +58,14 @@ type entry struct {
 	loading bool      // a lookup runs
 }
 
-// NewBook returns a book reading AWS prices from ec2.shop and Azure prices from the Azure Retail
-// Prices API; Google Cloud has no free public equivalent and stays on reference prices.
+// NewBook returns a book reading AWS prices from the price files of the AWS pricing pages and Azure
+// prices from the Azure Retail Prices API; Google Cloud has no free public equivalent and stays on
+// reference prices.
 func NewBook(log *slog.Logger) *Book {
 	client := &http.Client{Timeout: 15 * time.Second}
 	return &Book{
 		Fetchers: map[string]Fetcher{
-			"aws":   EC2Shop{Base: "https://ec2.shop", HTTP: client},
+			"aws":   AWSPriceList{Base: "https://b0.p.awsstatic.com", HTTP: client},
 			"azure": AzureRetail{Base: "https://prices.azure.com", HTTP: client},
 		},
 		TTL: 12 * time.Hour, RetryAfter: 10 * time.Minute, Timeout: 10 * time.Second, Log: log,

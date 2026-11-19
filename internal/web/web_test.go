@@ -144,6 +144,10 @@ func TestPlanKeepsDefaultsForMissingFields(t *testing.T) {
 	if r.Generic.Nodes < 3 || r.Generic.Demand.Storage == 0 || len(r.Rows) != 1 || r.Rows[0].Provider != "gcp" || r.Rows[0].Price.Source != pricing.Reference {
 		t.Errorf("plan = %+v", r)
 	}
+	// Nothing was bounded: the list is there, empty, like the notes.
+	if !strings.Contains(body, `"clamps":[]`) {
+		t.Errorf("plan without clamps: %s", body)
+	}
 }
 
 // workload.reads_found is the share of reads that find a record, a fraction: absent or null it is 1

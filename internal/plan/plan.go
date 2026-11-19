@@ -131,6 +131,16 @@ type Response struct {
 	Rows       []Row             `json:"rows"`
 	Pending    bool              `json:"pending"` // live prices are being looked up: ask again shortly
 	Notes      []string          `json:"notes"`
+	// Clamps are the inputs moved into their bounds, each with a note that says what was used and,
+	// for the bounds of the model, what that changes: the workload, the generic node, the
+	// hypotheses and the network settings, in that order; empty when nothing was bounded.
+	Clamps []ClampNote `json:"clamps"`
+}
+
+// ClampNote is an input the estimate moved into its bounds, with what the interface says of it.
+type ClampNote struct {
+	sizing.Clamp
+	Note string `json:"note"`
 }
 
 // Quoter prices one node; *pricing.Book implements it.
@@ -149,10 +159,12 @@ type computation struct {
 
 // Compute answers a request.
 func Compute(req Request, q Quoter) Response {
-	w := req.Workload.Normalize()
-	h := req.Hypotheses.Normalize()
-	s := req.Network.Normalize()
-	node := req.Node.Amounts()
+	w, wc := req.Workload.Bounded()
+	n, nc := req.Node.Bounded()
+	h, hc := req.Hypotheses.Bounded()
+	s, sc := req.Network.Bounded()
+	node := n.Amounts()
+	clamps := clampNotes(slices.Concat(wc, nc, hc, sc), h)
 	detail := sizing.Detailed(w, h)
 	h = h.ForDemand(detail) // the RAM ceiling of a memory namespace follows its records
 	c := computation{demand: detail.Amounts, hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w.Grown(h)), quoter: q}
@@ -175,6 +187,7 @@ func Compute(req Request, q Quoter) Response {
 		Network:    c.traffic,
 		Rows:       []Row{},
 		Notes:      []string{},
+		Clamps:     clamps,
 	}
 	if h.Loss == sizing.RackLoss && c.layout.Racks == 1 {
 		resp.Notes = append(resp.Notes, "The ceilings are kept after the loss of one node: losing a whole rack can only be planned for with rack-aware AZs in a single region.")

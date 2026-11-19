@@ -76,6 +76,14 @@ func TestPagesAndAssets(t *testing.T) {
 	if want := `data-path="workload.reads_found" data-scale="100" min="0" max="100"`; !strings.Contains(body, want) {
 		t.Errorf("home: no %s input", want)
 	}
+	// The primary index takes any decimal, as wellness sends its effective bytes per record copy.
+	if want := `<span class="unit">B per record copy</span><input type="number" data-path="hypotheses.index_bytes" min="0" step="any">`; !strings.Contains(body, want) {
+		t.Errorf("home: no %s input", want)
+	}
+	// The notes of the inputs the server bounded have their place under the prefill notice.
+	if !strings.Contains(body, `<div id="clamps"></div>`) {
+		t.Errorf("home: no place for the clamp notes")
+	}
 	for _, path := range []string{"/static/app.js", "/static/app.css"} {
 		if resp, _ := get(t, srv.URL+path); resp.StatusCode != http.StatusOK {
 			t.Errorf("%s: status %d", path, resp.StatusCode)
@@ -106,7 +114,7 @@ func TestDefaults(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &d); err != nil {
 		t.Fatal(err)
 	}
-	if d.Request.Workload.RF != 2 || len(d.Providers) != 3 || len(d.Request.Auto) != 3 || d.Thresholds["tight"] != sizing.TightLoad || d.PricesAsOf == "" || d.RatesAsOf == "" {
+	if d.Request.Workload.RF != 2 || len(d.Providers) != 3 || len(d.Request.Auto) != 3 || d.Thresholds["tight"] != sizing.TightLoad || d.Thresholds["tolerance"] != sizing.RatioTolerance || d.PricesAsOf == "" || d.RatesAsOf == "" {
 		t.Errorf("defaults = %+v", d)
 	}
 	// The form opens with every read finding its record; a number, so that the URL can prefill it.
@@ -143,6 +151,10 @@ func TestPlanKeepsDefaultsForMissingFields(t *testing.T) {
 	}
 	if r.Generic.Nodes < 3 || r.Generic.Demand.Storage == 0 || len(r.Rows) != 1 || r.Rows[0].Provider != "gcp" || r.Rows[0].Price.Source != pricing.Reference {
 		t.Errorf("plan = %+v", r)
+	}
+	// Nothing was bounded: the list is there, empty, like the notes.
+	if !strings.Contains(body, `"clamps":[]`) {
+		t.Errorf("plan without clamps: %s", body)
 	}
 }
 

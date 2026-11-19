@@ -12,6 +12,8 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -131,9 +133,25 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
-	if err := indexTemplate.Execute(w, map[string]string{"Version": buildinfo.Version, "Assets": assetsVersion}); err != nil {
+	page := map[string]string{"Version": buildinfo.Version, "Assets": assetsVersion, "Back": localBack(r.URL.Query().Get("back"))}
+	if err := indexTemplate.Execute(w, page); err != nil {
 		s.Log.Error("render index", "err", err)
 	}
+}
+
+// localBack returns the way back a prefilled link names (T10) when it is a page of a local service,
+// else "": Wellness listens on the loopback, 127.0.0.0/8, ::1 or localhost (its WELLNESS_ADDR), and
+// names its own page by the address the browser used.
+func localBack(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "http" || u.User != nil {
+		return ""
+	}
+	host := u.Hostname()
+	if ip, err := netip.ParseAddr(host); strings.EqualFold(host, "localhost") || err == nil && ip.IsLoopback() {
+		return u.String()
+	}
+	return ""
 }
 
 // defaults gives the interface its catalog, the form as it opens, and what this server looks up
@@ -150,7 +168,7 @@ func (s *Server) defaults(w http.ResponseWriter, r *http.Request) {
 		"prices_as_of":  catalog.PricesAsOf,
 		"prices_region": catalog.PricesRegion,
 		"rates_as_of":   network.RatesAsOf,
-		"thresholds":    map[string]float64{"tight": sizing.TightLoad},
+		"thresholds":    map[string]float64{"tight": sizing.TightLoad, "tolerance": sizing.RatioTolerance},
 		"version":       buildinfo.Version,
 	})
 }

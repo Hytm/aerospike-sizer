@@ -20,6 +20,7 @@
   var ratesAsOf = "";    // date of the default network rates
   var livePrices = {};   // provider key → this server looks its prices up live
   var tight = 0.85;      // load above which a resource is tight (sizing.TightLoad)
+  var tolerance = 1e-12; // relative error of the arithmetic a load may carry (sizing.RatioTolerance)
   var req = null;        // the form: workload, node, hypotheses, network
   var rows = [];         // configurations added by the user
   var auto = [];         // providers whose recommended configuration is listed
@@ -236,12 +237,18 @@
     renderPlacement(r);
     renderNetwork(r);
     renderRows(r);
+    // The inputs the server moved into their bounds, with what it used instead.
+    $("clamps").innerHTML = (r.clamps || []).map(function (c) { return '<div class="notice warn small">' + esc(c.note) + "</div>"; }).join("");
     $("notes").innerHTML = r.notes.map(function (n) { return '<div class="notice warn small">' + esc(n) + "</div>"; }).join("");
     if (!addNodesTouched && r.generic.nodes) $("addNodes").value = r.generic.nodes;
   }
 
+  // over tells whether a load passes a limit by more than the error of the arithmetic, as the fit
+  // grades it (sizing.exceeds).
+  function over(load, limit) { return load * (1 - tolerance) > limit; }
+
   function gauge(util, ceiling, load) {
-    var cls = load > 1 ? "crit" : load > tight ? "warn" : "";
+    var cls = over(load, 1) ? "crit" : over(load, tight) ? "warn" : "";
     return '<div class="gauge ' + cls + '"><div style="width:' + Math.min(100, util * 100).toFixed(1) + '%"></div>' +
       '<span style="left:' + (ceiling * 100).toFixed(1) + '%" title="Ceiling ' + pct(ceiling) + '"></span></div>';
   }
@@ -513,7 +520,8 @@
 
   // applyQuery prefills the form from the URL: one parameter per field, named by its path
   // (workload.objects=5e8, hypotheses.growth=0.2, network.azs=3), as Wellness links here; "source"
-  // names where the values come from and "back" (a local URL) links back to it.
+  // names where the values come from and "back" links back to it when the server finds it local
+  // (localBack, passed as the page's data-back).
   function applyQuery() {
     var params = new URLSearchParams(window.location.search), applied = 0;
     params.forEach(function (value, key) {
@@ -533,13 +541,15 @@
       applied++;
     });
     if (!applied) return;
-    var source = params.get("source") || "the link", back = params.get("back") || "", note = $("prefilled");
+    var source = params.get("source") || "the link", back = document.body.getAttribute("data-back"), note = $("prefilled");
     note.textContent = "Prefilled from " + source + ": " + applied + " value" + (applied > 1 ? "s" : "") + " of the form come from it. ";
-    if (/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(back)) {
+    if (back) {
       var a = document.createElement("a");
       a.href = back;
       a.textContent = "Back to " + source;
       note.appendChild(a);
+    } else if (params.get("back")) {
+      note.appendChild(document.createTextNode("The page it links back to is not local: no link back."));
     }
     note.hidden = false;
   }
@@ -562,6 +572,7 @@
     ratesAsOf = d.rates_as_of || "";
     livePrices = d.live_prices || {};
     tight = (d.thresholds && d.thresholds.tight) || tight;
+    tolerance = (d.thresholds && d.thresholds.tolerance) || tolerance;
     req = clone(defaults);
     delete req.auto;
     auto = defaults.auto.slice();

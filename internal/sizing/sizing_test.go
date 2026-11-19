@@ -2,6 +2,7 @@ package sizing
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +83,14 @@ func TestDeviceIOCountsBlocks(t *testing.T) {
 	h.Compression = 0.25 // 3,016 B stored: one block
 	if d := Detailed(large, h); d.BlocksPerRead != 1 || !near(d.WriteIOPS, 2*1000*3016/4096.0) {
 		t.Errorf("compressed large records: %v blocks per read, write %v", d.BlocksPerRead, d.WriteIOPS)
+	}
+	// A record of exactly one block as stored reads one, though its size computes an ulp above (T18);
+	// a byte more spans two.
+	h.Compression, h.RecordOverhead = 1, 0
+	for size, want := range map[float64]float64{math.Nextafter(4096, 5000): 1, 4097: 2} {
+		if d := Detailed(Workload{ObjectSize: size, Objects: 1, ReadsPerSec: 1, RF: 1, Engine: Device}, h); d.BlocksPerRead != want {
+			t.Errorf("%v B stored: %v blocks per read, want %v", size, d.BlocksPerRead, want)
+		}
 	}
 	e := (Sizing{Nodes: 3, Binding: ByIOPS}).Explain(large, Detailed(large, DefaultHypotheses()), Amounts{IOPS: 1e5}, DefaultHypotheses(), Layout{RF: 2})
 	if !strings.Contains(e, "IOPS of 4 KiB") || !strings.Contains(e, "record reads of 3 blocks") {
@@ -174,6 +183,8 @@ func TestSprigsPerPartitionStayInTheConfigurableRange(t *testing.T) {
 		{1e6, 0.5, 256},
 		{4e9, 0.5, 32768},
 		{1e10, 0.5, 131072},
+		{math.Nextafter(256*4096*32, 1e10), 0.5, 256}, // 256 sprigs exactly, an ulp above (T18)
+		{256*4096*32 + 1, 0.5, 512},
 		{1e13, 0.05, MaxSprigsPerPart},
 		{1e24, 0.5, MaxSprigsPerPart}, // used to overflow the rounding loop and hang
 	} {
@@ -223,7 +234,7 @@ func TestZeroWorkloadNeedsTheTopologyFloorOnly(t *testing.T) {
 	}
 	// All-flash: the smallest configurable index is still allocated.
 	d = Detailed(Workload{RF: 2, Engine: Device, IndexOn: OnFlash}.Normalize(), h)
-	if d.SprigsPerPartition != 256 || !near(d.Storage, 4096*2*256*4101) || !near(d.RAM, 4096*2*256*10) || d.IOPS != 0 || d.BlocksPerRead != 1 {
+	if d.SprigsPerPartition != 256 || !near(d.Storage, 4096*2*256*4101) || !near(d.RAM, 4096*2*256*10) || d.IOPS != 0 || d.BlocksPerRead != 0 {
 		t.Errorf("empty all-flash namespace demand = %+v", d)
 	}
 	if s := Size(d.Amounts, node, h, l); s.Nodes != 3 || s.Binding != ByTopology || s.Need[ByStorage] != 2 {
@@ -335,6 +346,85 @@ func TestSizeKeepsHeadroomAndFillsRacks(t *testing.T) {
 	h.Loss = NodeLoss
 	if s := Size(Amounts{Storage: 1e11}, node, h, Layout{RF: 2, AZs: 1, Racks: 1}); s.Need[ByStorage] != 2 || s.Nodes != 3 || s.Binding != ByTopology {
 		t.Errorf("one node's worth of storage: sizing = %+v", s)
+	}
+}
+
+// A ratio past a whole number by the error of the arithmetic only is that number; a real excess,
+// however small, is one more (T18).
+func TestCeilRatioToleratesOnlyTheArithmetic(t *testing.T) {
+	for _, c := range []struct{ ratio, want float64 }{
+		{0, 0}, {7, 7}, {math.Nextafter(7, 8), 7}, {7 * (1 + 1e-11), 8}, {6.5, 7}, {math.Inf(1), math.Inf(1)},
+	} {
+		if got := ceilRatio(c.ratio); got != c.want {
+			t.Errorf("ceilRatio(%v) = %v, want %v", c.ratio, got, c.want)
+		}
+	}
+	if RatioTolerance != 1e-12 {
+		t.Errorf("tolerance = %v, want aerospike-wellness's 1e-12", RatioTolerance)
+	}
+	if exceeds(1, 1) || exceeds(math.Nextafter(1, 2), 1) || !exceeds(1+1e-11, 1) || exceeds(math.Nextafter(TightLoad, 1), TightLoad) || !exceeds(0.86, TightLoad) {
+		t.Error("exceeds must ignore the error of the arithmetic, and only that")
+	}
+}
+
+// A demand that is an exact multiple of a node needs that many nodes, whatever order the arithmetic
+// took (T18), and Evaluate finds them enough: 1,008,000 tx/s are 7 nodes of 16 vCPU at 60 % of
+// 15,000 tx/s per vCPU, though 1,008,000 ÷ 15,000 ÷ (16 × 0.6) computes as 7.000000000000001;
+// 28.125 TB of records, a mean record (aerospike-wellness's) times its count, are 15 nodes of
+// 3.75 TB at 50 %. One transaction per second or one megabyte more is one node more.
+func TestSizeCountsAnExactMultipleOnce(t *testing.T) {
+	cpu := func(tps float64) Workload {
+		return Workload{ObjectSize: 100, Objects: 1, ReadsPerSec: tps / 2, WritesPerSec: tps / 2, RF: 1, Engine: Memory}
+	}
+	records := func(bytes float64) Workload {
+		const objects = 6_719_163_893
+		return Workload{ObjectSize: bytes / objects, Objects: objects, RF: 1, Engine: Device}
+	}
+	node := Amounts{Storage: 3.75e12, RAM: 1 << 50, CPU: 16, IOPS: 1e9}
+	l := Layout{RF: 1, AZs: 1, Racks: 1}
+	for _, c := range []struct {
+		name   string
+		w      Workload
+		growth float64
+		loss   Loss
+		by     Constraint
+		want   int
+	}{
+		{"1,008,000 tx/s", cpu(1_008_000), 0, NoLoss, ByCPU, 7},
+		{"one transaction more", cpu(1_008_001), 0, NoLoss, ByCPU, 8},
+		{"with a spare node", cpu(1_008_000), 0, NodeLoss, ByCPU, 8},
+		{"default hypotheses", cpu(12_960_000), 0.3, NodeLoss, ByCPU, 118},
+		{"28.125 TB of records", records(2.8125e13), 0, NoLoss, ByStorage, 15},
+		{"one megabyte more", records(2.8125e13 + 1e6), 0, NoLoss, ByStorage, 16},
+	} {
+		h := DefaultHypotheses()
+		h.Growth, h.Loss = c.growth, c.loss
+		d := DemandOf(c.w, h)
+		s := Size(d, node, h, l)
+		if s.Nodes != c.want || s.Binding != c.by {
+			t.Errorf("%s: %d nodes bound by %s, want %d by %s", c.name, s.Nodes, s.Binding, c.want, c.by)
+		}
+		if f := Evaluate(d, node, s.Nodes, h, l); f.Status == Short {
+			t.Errorf("%s: the %d nodes Size counts are short: %q", c.name, s.Nodes, f.Checks)
+		}
+	}
+}
+
+// Every exact multiple of a node's CPU is sized at that count and holds.
+func TestExactMultiplesOfANodeHold(t *testing.T) {
+	h := DefaultHypotheses()
+	h.Growth, h.Loss = 0, NoLoss
+	l := Layout{RF: 1, AZs: 1, Racks: 1}
+	for _, vcpu := range []float64{2, 4, 8, 16, 32, 48, 64, 96, 128, 192} {
+		node := Amounts{Storage: 1e13, RAM: 1 << 50, CPU: vcpu, IOPS: 1e9}
+		for k := 1; k <= 500; k++ {
+			half := float64(k) * vcpu * h.OpsPerVCPU * h.CPUTarget / 2
+			d := DemandOf(Workload{ObjectSize: 100, Objects: 1, ReadsPerSec: half, WritesPerSec: half, RF: 1, Engine: Memory}, h)
+			s := Size(d, node, h, l)
+			if checks := strings.Join(Evaluate(d, node, k, h, l).Checks, " "); s.Need[ByCPU] != k || strings.Contains(checks, "Not enough CPU") {
+				t.Fatalf("%d nodes' worth of %v vCPU: %d nodes for the CPU; %d nodes: %s", k, vcpu, s.Need[ByCPU], k, checks)
+			}
+		}
 	}
 }
 
@@ -556,6 +646,11 @@ func TestNormalize(t *testing.T) {
 	if w.ObjectSize != MaxObjectSize || w.Objects != MaxObjects || w.ReadsPerSec != MaxRate || w.WritesPerSec != MaxRate || w.RF != MaxRF || w.SindexEntries != MaxSindexEntries {
 		t.Errorf("bounded workload = %+v", w)
 	}
+	// Secondary index bytes measured over few or merged records come as many entries per record:
+	// they are used as given.
+	if w := (Workload{SindexEntries: 25000}).Normalize(); w.SindexEntries != 25000 {
+		t.Errorf("25,000 secondary index entries per record: %v used", w.SindexEntries)
+	}
 	// The share of reads that find a record is 1 when absent and stays within [0, 1].
 	for _, c := range []struct {
 		in   *float64
@@ -614,5 +709,49 @@ func TestMemoryRecordsArePlannedAtTheStorageFill(t *testing.T) {
 	onDevice := Size(Detailed(big, h).Amounts, Amounts{Storage: 64 * catalog.GiB, RAM: 1e15, CPU: 64, IOPS: 1e6}, h, Layout{RF: 1, AZs: 1, Racks: 1})
 	if inMemory.Nodes != onDevice.Nodes || inMemory.Binding != ByRAM || onDevice.Binding != ByStorage {
 		t.Errorf("in memory %+v, on device %+v", inMemory, onDevice)
+	}
+}
+
+// Every bound Normalize applies is told, with the value given and the one used; what is within
+// its bounds, a share left out and a placement the engine rules out are not.
+func TestBoundedTellsEveryClamp(t *testing.T) {
+	_, clamps := Workload{ObjectSize: 98500039, Objects: -1, ReadsPerSec: 2e9, WritesPerSec: 10, RF: 10, Engine: Memory, IndexOn: OnFlash, SindexEntries: 2e9, ReadsFound: share(1.5)}.Bounded()
+	want := []Clamp{
+		{"workload.object_size", 98500039, MaxObjectSize}, {"workload.objects", -1, 0}, {"workload.reads_per_sec", 2e9, MaxRate},
+		{"workload.rf", 10, MaxRF}, {"workload.sindex_entries", 2e9, MaxSindexEntries}, {"workload.reads_found", 1.5, 1},
+	}
+	if !slices.Equal(clamps, want) {
+		t.Errorf("workload clamps = %+v", clamps)
+	}
+	if _, clamps := (Workload{ObjectSize: 1024, Objects: 5e8, RF: 2, SindexEntries: 25000}).Bounded(); len(clamps) != 0 {
+		t.Errorf("clamps within the bounds = %+v", clamps)
+	}
+	h := DefaultHypotheses()
+	h.Growth, h.StorageFill, h.Loss = 200, 0.01, "all"
+	if _, clamps := h.Bounded(); !slices.Equal(clamps, []Clamp{{"hypotheses.growth", 200, MaxGrowth}, {"hypotheses.storage_fill", 0.01, MinCeiling}}) {
+		t.Errorf("hypotheses clamps = %+v", clamps)
+	}
+	if _, clamps := DefaultHypotheses().Bounded(); len(clamps) != 0 {
+		t.Errorf("default hypotheses clamps = %+v", clamps)
+	}
+}
+
+// No record on the device, or records of no bytes: reads find nothing there and fetch no block,
+// as in aerospike-wellness (its ReadsReachDrives); they keep their CPU.
+func TestReadsFetchNoBlockWithoutRecordBytes(t *testing.T) {
+	h := DefaultHypotheses()
+	for _, w := range []Workload{
+		{ObjectSize: 0, Objects: 1e6, ReadsPerSec: 1e5, RF: 2, Engine: Device},
+		{ObjectSize: 1024, Objects: 0, ReadsPerSec: 1e5, RF: 2, Engine: Device},
+	} {
+		d := Detailed(w.Normalize(), h)
+		if d.ReadIOPS != 0 || d.BlocksPerRead != 0 || d.CPU == 0 {
+			t.Errorf("%+v: read IOPS %v, blocks %v, CPU %v", w, d.ReadIOPS, d.BlocksPerRead, d.CPU)
+		}
+	}
+	// A record overhead gives the records bytes: reads fetch them again.
+	h.RecordOverhead = 64
+	if d := Detailed(Workload{Objects: 1e6, ReadsPerSec: 1e5, RF: 2, Engine: Device}.Normalize(), h); d.BlocksPerRead != 1 || !near(d.ReadIOPS, 1.3e5) {
+		t.Errorf("records of 64 B: blocks %v, read IOPS %v", d.BlocksPerRead, d.ReadIOPS)
 	}
 }

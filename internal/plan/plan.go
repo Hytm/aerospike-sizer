@@ -29,15 +29,21 @@ const (
 	MaxNodeIOPS      = 1e9
 )
 
-// Amounts returns the raw resources of the node.
+// Amounts returns the raw resources of the node, within its bounds.
 func (n Node) Amounts() sizing.Amounts {
-	return sizing.Amounts{
-		Storage: bounded(n.StorageTB, MaxNodeStorageTB) * 1e12, RAM: bounded(n.RAMGiB, MaxNodeRAMGiB) * catalog.GiB,
-		CPU: bounded(n.VCPU, MaxNodeVCPU), IOPS: bounded(n.IOPS, MaxNodeIOPS),
-	}
+	n, _ = n.Bounded()
+	return sizing.Amounts{Storage: n.StorageTB * 1e12, RAM: n.RAMGiB * catalog.GiB, CPU: n.VCPU, IOPS: n.IOPS}
 }
 
-func bounded(v, hi float64) float64 { return min(max(v, 0), hi) }
+// Bounded returns the node within its bounds, with the values it moved (sizing.Clamp).
+func (n Node) Bounded() (Node, []sizing.Clamp) {
+	var b sizing.Bounds
+	b.Float("node.vcpu", &n.VCPU, 0, MaxNodeVCPU)
+	b.Float("node.ram_gib", &n.RAMGiB, 0, MaxNodeRAMGiB)
+	b.Float("node.storage_tb", &n.StorageTB, 0, MaxNodeStorageTB)
+	b.Float("node.iops", &n.IOPS, 0, MaxNodeIOPS)
+	return n, b.Clamps
+}
 
 // RowRequest is a configuration the user added to the comparison.
 type RowRequest struct {
@@ -125,6 +131,16 @@ type Response struct {
 	Rows       []Row             `json:"rows"`
 	Pending    bool              `json:"pending"` // live prices are being looked up: ask again shortly
 	Notes      []string          `json:"notes"`
+	// Clamps are the inputs moved into their bounds, each with a note that says what was used and,
+	// for the bounds of the model, what that changes: the workload, the generic node, the
+	// hypotheses and the network settings, in that order; empty when nothing was bounded.
+	Clamps []ClampNote `json:"clamps"`
+}
+
+// ClampNote is an input the estimate moved into its bounds, with what the interface says of it.
+type ClampNote struct {
+	sizing.Clamp
+	Note string `json:"note"`
 }
 
 // Quoter prices one node; *pricing.Book implements it.
@@ -143,10 +159,12 @@ type computation struct {
 
 // Compute answers a request.
 func Compute(req Request, q Quoter) Response {
-	w := req.Workload.Normalize()
-	h := req.Hypotheses.Normalize()
-	s := req.Network.Normalize()
-	node := req.Node.Amounts()
+	w, wc := req.Workload.Bounded()
+	n, nc := req.Node.Bounded()
+	h, hc := req.Hypotheses.Bounded()
+	s, sc := req.Network.Bounded()
+	node := n.Amounts()
+	clamps := clampNotes(slices.Concat(wc, nc, hc, sc), h)
 	detail := sizing.Detailed(w, h)
 	h = h.ForDemand(detail) // the RAM ceiling of a memory namespace follows its records
 	c := computation{demand: detail.Amounts, hyp: h, layout: s.Layout(w.RF), traffic: network.Estimate(s, w.Grown(h)), quoter: q}
@@ -169,7 +187,9 @@ func Compute(req Request, q Quoter) Response {
 		Network:    c.traffic,
 		Rows:       []Row{},
 		Notes:      []string{},
+		Clamps:     clamps,
 	}
+	resp.Notes = append(resp.Notes, indexNotes(req.Workload, w)...)
 	if h.Loss == sizing.RackLoss && c.layout.Racks == 1 {
 		resp.Notes = append(resp.Notes, "The ceilings are kept after the loss of one node: losing a whole rack can only be planned for with rack-aware AZs in a single region.")
 	}
@@ -205,6 +225,17 @@ func Compute(req Request, q Quoter) Response {
 			(r.Alternative != nil && r.Alternative.Price.Source == pricing.Pending)
 	}
 	return resp
+}
+
+// indexNotes say how the primary index of a request is planned when it cannot be planned where it
+// was asked: on flash with the memory engine, which index-type flash does not work with, Bounded
+// plans it in RAM. That is a rewrite of a placement, not a bound on a number: it is a note, not a
+// clamp (T18).
+func indexNotes(asked, w sizing.Workload) []string {
+	if asked.IndexOn == sizing.OnFlash && w.IndexOn == sizing.InRAM {
+		return []string{"The primary index is planned in RAM: index-type flash does not work with the memory engine (configuration reference, 7.0)."}
+	}
+	return nil
 }
 
 // row evaluates a configuration, with a comfortable alternative when it does not fit well. A

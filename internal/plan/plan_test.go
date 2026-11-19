@@ -2,6 +2,7 @@ package plan
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -219,6 +220,21 @@ func TestGenericChecksAndNotes(t *testing.T) {
 	}
 }
 
+// A demand that is an exact multiple of the generic node is sized at that count, and its load of
+// 100 % is tight, not short (T18).
+func TestGenericAtAnExactMultipleOfTheNode(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = nil
+	req.Workload = sizing.Workload{ObjectSize: 100, Objects: 1000, ReadsPerSec: 504000, WritesPerSec: 504000, RF: 1, Engine: sizing.Memory}
+	req.Node = Node{VCPU: 16, RAMGiB: 1024, StorageTB: 10, IOPS: 1e6}
+	req.Hypotheses.Growth, req.Hypotheses.Loss = 0, sizing.NoLoss
+	req.Network.AZs = 1
+	g := Compute(req, referenceQuoter{}).Generic
+	if g.Nodes != 7 || g.Binding != sizing.ByCPU || len(g.Checks) != 1 || g.Checks[0] != "CPU tight: 100% of the usable capacity." {
+		t.Errorf("generic = %d nodes bound by %s, checks %q; want 7 by cpu, tight", g.Nodes, g.Binding, g.Checks)
+	}
+}
+
 func TestUnknownRowsAreIgnoredWithANote(t *testing.T) {
 	req := DefaultRequest()
 	req.Auto = []string{"aws"}
@@ -246,9 +262,20 @@ func TestSettingsComeBackNormalized(t *testing.T) {
 }
 
 func TestNodeAmountsAreBounded(t *testing.T) {
-	a := Node{VCPU: -1, RAMGiB: 1e30, StorageTB: 1e30, IOPS: 1e30}.Amounts()
+	n := Node{VCPU: -1, RAMGiB: 1e30, StorageTB: 1e30, IOPS: 1e30}
+	a := n.Amounts()
 	if a.CPU != 0 || a.RAM != MaxNodeRAMGiB*catalog.GiB || a.Storage != MaxNodeStorageTB*1e12 || a.IOPS != MaxNodeIOPS {
 		t.Errorf("amounts = %+v", a)
+	}
+	want := []sizing.Clamp{
+		{Field: "node.vcpu", Given: -1, Used: 0}, {Field: "node.ram_gib", Given: 1e30, Used: MaxNodeRAMGiB},
+		{Field: "node.storage_tb", Given: 1e30, Used: MaxNodeStorageTB}, {Field: "node.iops", Given: 1e30, Used: MaxNodeIOPS},
+	}
+	if _, clamps := n.Bounded(); !slices.Equal(clamps, want) {
+		t.Errorf("clamps = %+v", clamps)
+	}
+	if _, clamps := DefaultRequest().Node.Bounded(); len(clamps) != 0 {
+		t.Errorf("default node clamps = %+v", clamps)
 	}
 }
 
@@ -273,5 +300,37 @@ func TestMemoryNamespaceIsPlannedAtTheStorageFill(t *testing.T) {
 	req.Workload.Engine = sizing.Device
 	if resp := Compute(req, referenceQuoter{}); resp.Hypotheses.RAMFill != 0.7 {
 		t.Errorf("device engine: RAM fill = %v", resp.Hypotheses.RAMFill)
+	}
+}
+
+// The primary index cannot be on flash with the memory engine (configuration reference, 7.0): the
+// sizer plans it in RAM and says so in the notes, a rewrite and not a clamp. Bytes per record copy
+// above their bound are a clamp, with their own wording. An index planned as asked gets neither.
+func TestIndexPlannedOtherwiseThanAskedIsNoted(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = nil
+	req.Workload.Engine, req.Workload.IndexOn = sizing.Memory, sizing.OnFlash
+	resp := Compute(req, referenceQuoter{})
+	if resp.Workload.IndexOn != sizing.InRAM || len(resp.Notes) != 1 || !strings.Contains(resp.Notes[0], "planned in RAM") || len(resp.Clamps) != 0 {
+		t.Errorf("memory engine: index %s, notes %q, clamps %+v", resp.Workload.IndexOn, resp.Notes, resp.Clamps)
+	}
+	req.Workload.Engine = sizing.Device
+	if resp := Compute(req, referenceQuoter{}); resp.Workload.IndexOn != sizing.OnFlash || len(resp.Notes) != 0 {
+		t.Errorf("device engine: index %s, notes %q", resp.Workload.IndexOn, resp.Notes)
+	}
+	req.Workload.IndexOn = sizing.InRAM
+	req.Hypotheses.IndexBytes = 2e6
+	resp = Compute(req, referenceQuoter{})
+	want := "Primary index: 2,000,000 B per record copy asked, 1,048,576 B planned, the most an estimate accepts."
+	if resp.Hypotheses.IndexBytes != sizing.MaxBytesPerEntry || len(resp.Notes) != 0 || len(resp.Clamps) != 1 ||
+		resp.Clamps[0].Field != "hypotheses.index_bytes" || resp.Clamps[0].Note != want {
+		t.Errorf("index %v B per copy, notes %q, clamps %+v", resp.Hypotheses.IndexBytes, resp.Notes, resp.Clamps)
+	}
+	// An effective figure under 64 B, as wellness sends it for namespaces storing fewer copies than
+	// RF, is planned as sent: 43.68 B per copy of every record grown by 30 %, RF2.
+	req.Hypotheses.IndexBytes = 43.68
+	resp = Compute(req, referenceQuoter{})
+	if want := 43.68 * req.Workload.Objects * 1.3 * 2; !near(resp.Generic.Demand.Index, want, want*1e-9) || len(resp.Notes) != 0 || len(resp.Clamps) != 0 {
+		t.Errorf("index %v B, want %v; notes %q, clamps %+v", resp.Generic.Demand.Index, want, resp.Notes, resp.Clamps)
 	}
 }

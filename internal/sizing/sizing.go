@@ -35,12 +35,14 @@ type Workload struct {
 	// ReadsFound is the share of the reads that find a record, 0 to 1; nil (absent) means all of
 	// them, so that callers written before it keep their figures. A read that finds nothing is
 	// answered from the primary index: it costs CPU and network like any read, no record block.
-	ReadsFound   *float64  `json:"reads_found"`
-	WritesPerSec float64   `json:"writes_per_sec"`
-	RF           int       `json:"rf"`
-	Engine       Engine    `json:"engine"`
-	Persist      bool      `json:"persist"`  // memory engine: records are also written to a device
-	IndexOn      Placement `json:"index_on"` // primary index placement; in RAM with the memory engine
+	ReadsFound   *float64 `json:"reads_found"`
+	WritesPerSec float64  `json:"writes_per_sec"`
+	RF           int      `json:"rf"`
+	Engine       Engine   `json:"engine"`
+	Persist      bool     `json:"persist"` // memory engine: records are also written to a device
+	// IndexOn is the primary index placement; in RAM with the memory engine (noted). An index on pmem
+	// is planned in RAM, no catalog instance having pmem (T18).
+	IndexOn Placement `json:"index_on"`
 	// SindexEntries is the number of secondary index entries one record contributes, summed over
 	// the indexes: one per scalar bin indexed, one per distinct element for a list or map bin.
 	SindexEntries float64   `json:"sindex_entries"`
@@ -50,21 +52,60 @@ type Workload struct {
 
 // Bounds of a workload: the largest values an estimate accepts, so that every figure stays finite
 // whatever the request says. MaxObjectSize is the write block, the largest record Aerospike stores.
+// MaxSindexEntries is far beyond what a record of 8 MiB holds (a few million list or map elements):
+// it bounds a mistyped value, never secondary index bytes measured over few or merged records, and
+// every figure stays finite (at most about 8.5e34 B).
 const (
 	MaxRF            = 8
 	MaxObjectSize    = 8 << 20
 	MaxObjects       = 1e15
 	MaxRate          = 1e9 // transactions per second
-	MaxSindexEntries = 1e4
+	MaxSindexEntries = 1e9
 )
+
+// Clamp is an input an estimate moved into its bounds: the value given and the one used. Field is
+// its path in the request (workload.object_size, hypotheses.growth…).
+type Clamp struct {
+	Field string  `json:"field"`
+	Given float64 `json:"given"`
+	Used  float64 `json:"used"`
+}
+
+// Bounds moves inputs into their range and keeps the ones it moved, so that no bound applies
+// silently: the answer tells each (plan.Response.Clamps).
+type Bounds struct{ Clamps []Clamp }
+
+// Float bounds *v to [lo, hi].
+func (b *Bounds) Float(field string, v *float64, lo, hi float64) {
+	if used := clamp(*v, lo, hi); used != *v {
+		b.Clamps = append(b.Clamps, Clamp{Field: field, Given: *v, Used: used})
+		*v = used
+	}
+}
+
+// Int bounds *v to [lo, hi].
+func (b *Bounds) Int(field string, v *int, lo, hi int) {
+	if used := min(max(*v, lo), hi); used != *v {
+		b.Clamps = append(b.Clamps, Clamp{Field: field, Given: float64(*v), Used: float64(used)})
+		*v = used
+	}
+}
 
 // Normalize clamps the workload to meaningful values and drops the placements its engine rules out.
 func (w Workload) Normalize() Workload {
-	w.ObjectSize = clamp(w.ObjectSize, 0, MaxObjectSize)
-	w.Objects = clamp(w.Objects, 0, MaxObjects)
-	w.ReadsPerSec = clamp(w.ReadsPerSec, 0, MaxRate)
-	w.WritesPerSec = clamp(w.WritesPerSec, 0, MaxRate)
-	w.RF = min(max(w.RF, 1), MaxRF)
+	n, _ := w.Bounded()
+	return n
+}
+
+// Bounded is Normalize, with the inputs it moved into their bounds (Clamp). Placements the engine
+// rules out, and a share of the reads found left out (every read), are no clamp.
+func (w Workload) Bounded() (Workload, []Clamp) {
+	var b Bounds
+	b.Float("workload.object_size", &w.ObjectSize, 0, MaxObjectSize)
+	b.Float("workload.objects", &w.Objects, 0, MaxObjects)
+	b.Float("workload.reads_per_sec", &w.ReadsPerSec, 0, MaxRate)
+	b.Float("workload.writes_per_sec", &w.WritesPerSec, 0, MaxRate)
+	b.Int("workload.rf", &w.RF, 1, MaxRF)
 	if w.Engine != Memory {
 		w.Engine = Device
 		w.Persist = false
@@ -76,11 +117,15 @@ func (w Workload) Normalize() Workload {
 	if w.SindexOn != OnFlash {
 		w.SindexOn = InRAM
 	}
-	w.SindexEntries = clamp(w.SindexEntries, 0, MaxSindexEntries)
+	b.Float("workload.sindex_entries", &w.SindexEntries, 0, MaxSindexEntries)
 	// A fresh value: the caller's own is left alone, and the answer says which share was used.
-	found := w.FoundShare()
+	found := 1.0
+	if w.ReadsFound != nil {
+		found = *w.ReadsFound
+		b.Float("workload.reads_found", &found, 0, 1)
+	}
 	w.ReadsFound = &found
-	return w
+	return w, b.Clamps
 }
 
 // FoundShare returns the share of the reads that find a record, within [0, 1]: 1 when not given.
@@ -92,6 +137,23 @@ func (w Workload) FoundShare() float64 {
 }
 
 func clamp(v, lo, hi float64) float64 { return min(max(v, lo), hi) }
+
+// RatioTolerance is the relative error a ratio of a demand over a capacity may carry from the
+// floating-point arithmetic that computed it: a rate divided twice, a mean record multiplied back
+// by its record count, a product taken in another order than aerospike-wellness's. A ratio past a
+// whole number by no more than this share of it is that number, so that a demand that is an exact
+// multiple of a node, of a 4 KiB block or of a sprig is not given one more. It is thousands of times
+// the error of the arithmetic and one byte in a terabyte of demand; aerospike-wellness rounds with
+// the same (T18).
+const RatioTolerance = 1e-12
+
+// ceilRatio rounds a ratio up to a whole number, within RatioTolerance. It stays a float so that a
+// caller can bound it before converting it to an int.
+func ceilRatio(r float64) float64 { return math.Ceil(r * (1 - RatioTolerance)) }
+
+// exceeds tells whether a load passes a limit by more than RatioTolerance: the test that matches
+// ceilRatio, so that Evaluate never finds short the nodes Size counted.
+func exceeds(load, limit float64) bool { return load*(1-RatioTolerance) > limit }
 
 // OnDevice tells whether records are written to a device.
 func (w Workload) OnDevice() bool { return w.Engine == Device || w.Persist }
@@ -117,8 +179,10 @@ const (
 
 // Hypotheses are the assumptions of every estimate; the interface shows and edits them.
 type Hypotheses struct {
-	Growth         float64 `json:"growth"`          // growth of the records and of the throughput over the planning horizon (0.3 = +30 %)
-	IndexBytes     float64 `json:"index_bytes"`     // primary index per record copy (64 B)
+	Growth float64 `json:"growth"` // growth of the records and of the throughput over the planning horizon (0.3 = +30 %)
+	// IndexBytes is the primary index per record copy (64 B); an effective figure when it folds
+	// tombstones or namespaces storing fewer copies than RF, as Aerospike Wellness sends it (T18).
+	IndexBytes     float64 `json:"index_bytes"`
 	RecordOverhead float64 `json:"record_overhead"` // bytes added to the object size when it is the payload only
 	WriteOverhead  float64 `json:"write_overhead"`  // write-block overhead: device space on top of the stored records (0.1 = +10 %)
 	Compression    float64 `json:"compression"`     // stored size of records as a share of their size (1: no compression), on device and in memory
@@ -186,31 +250,40 @@ func DefaultHypotheses() Hypotheses {
 
 // Normalize clamps the hypotheses to meaningful values.
 func (h Hypotheses) Normalize() Hypotheses {
-	h.Growth = clamp(h.Growth, 0, MaxGrowth)
-	h.IndexBytes = clamp(h.IndexBytes, 0, MaxBytesPerEntry)
-	h.RecordOverhead = clamp(h.RecordOverhead, 0, MaxObjectSize)
-	h.WriteOverhead = clamp(h.WriteOverhead, 0, MaxWriteOverhead)
-	h.Compression = ceiling(h.Compression)
-	h.DefragMult = clamp(h.DefragMult, 1, MaxDefragMult)
-	h.CacheHit = clamp(h.CacheHit, 0, 1)
-	h.StorageFill = ceiling(h.StorageFill)
-	h.RAMFill = ceiling(h.RAMFill)
-	h.IOTarget = ceiling(h.IOTarget)
-	h.CPUTarget = ceiling(h.CPUTarget)
-	h.OpsPerVCPU = clamp(h.OpsPerVCPU, 100, MaxOpsPerVCPU)
-	h.OSReserveGiB = clamp(h.OSReserveGiB, 0, MaxOSReserveGiB)
-	h.OSReservePct = clamp(h.OSReservePct, 0, 0.9)
+	n, _ := h.Bounded()
+	return n
+}
+
+// Bounded is Normalize, with the hypotheses it moved into their bounds (Clamp). A loss it does not
+// know, read as the loss of a node, is no clamp.
+func (h Hypotheses) Bounded() (Hypotheses, []Clamp) {
+	var b Bounds
+	b.Float("hypotheses.growth", &h.Growth, 0, MaxGrowth)
+	b.Float("hypotheses.index_bytes", &h.IndexBytes, 0, MaxBytesPerEntry)
+	b.Float("hypotheses.record_overhead", &h.RecordOverhead, 0, MaxObjectSize)
+	b.Float("hypotheses.write_overhead", &h.WriteOverhead, 0, MaxWriteOverhead)
+	b.Float("hypotheses.compression", &h.Compression, MinCeiling, 1)
+	b.Float("hypotheses.defrag_mult", &h.DefragMult, 1, MaxDefragMult)
+	b.Float("hypotheses.cache_hit", &h.CacheHit, 0, 1)
+	b.Float("hypotheses.storage_fill", &h.StorageFill, MinCeiling, 1)
+	b.Float("hypotheses.ram_fill", &h.RAMFill, MinCeiling, 1)
+	b.Float("hypotheses.io_target", &h.IOTarget, MinCeiling, 1)
+	b.Float("hypotheses.cpu_target", &h.CPUTarget, MinCeiling, 1)
+	b.Float("hypotheses.ops_per_vcpu", &h.OpsPerVCPU, 100, MaxOpsPerVCPU)
+	b.Float("hypotheses.os_reserve_gib", &h.OSReserveGiB, 0, MaxOSReserveGiB)
+	b.Float("hypotheses.os_reserve_pct", &h.OSReservePct, 0, 0.9)
 	if h.Loss != NoLoss && h.Loss != RackLoss {
 		h.Loss = NodeLoss
 	}
-	h.SprigFill = ceiling(h.SprigFill)
-	h.SprigRAMBytes = clamp(h.SprigRAMBytes, 0, MaxBytesPerEntry)
-	h.SindexEntryBytes = clamp(h.SindexEntryBytes, 0, MaxBytesPerEntry)
-	h.SindexSparseness = clamp(h.SindexSparseness, 1, MaxSparseness)
-	return h
+	b.Float("hypotheses.sprig_fill", &h.SprigFill, MinCeiling, 1)
+	b.Float("hypotheses.sprig_ram_bytes", &h.SprigRAMBytes, 0, MaxBytesPerEntry)
+	b.Float("hypotheses.sindex_entry_bytes", &h.SindexEntryBytes, 0, MaxBytesPerEntry)
+	b.Float("hypotheses.sindex_sparseness", &h.SindexSparseness, 1, MaxSparseness)
+	return h, b.Clamps
 }
 
-func ceiling(v float64) float64 { return clamp(v, 0.05, 1) }
+// MinCeiling is the lowest ceiling, fill or compression share: 5 % of a resource stays usable.
+const MinCeiling = 0.05
 
 // Constraint names what drives a node count.
 type Constraint string
@@ -338,11 +411,12 @@ func Detailed(w Workload, h Hypotheses) Detail {
 		// 4 KiB blocks whatever the record size.
 		d.WriteIOPS = w.WritesPerSec * float64(w.RF) * stored * h.DefragMult / DeviceBlockBytes
 	}
-	if w.Engine == Device {
+	if w.Engine == Device && objects > 0 && stored > 0 {
 		// A read that finds its record fetches the 4 KiB blocks the record spans, unless a cache
 		// serves it (the cache share is measured over the reads that reach the storage); one that
-		// finds nothing stops at the primary index.
-		d.BlocksPerRead = max(math.Ceil(stored/DeviceBlockBytes), 1)
+		// finds nothing stops at the primary index. Without a record, or with records of no bytes,
+		// no read finds anything on the device.
+		d.BlocksPerRead = max(ceilRatio(stored/DeviceBlockBytes), 1)
 		d.ReadIOPS = w.ReadsPerSec * w.FoundShare() * (1 - h.CacheHit) * d.BlocksPerRead
 	}
 	if w.IndexOn == OnFlash {
@@ -378,7 +452,7 @@ func Detailed(w Workload, h Hypotheses) Detail {
 // 64 entries at the fill share, over the partitions, rounded up to a power of two within the
 // configurable range.
 func sprigsPerPartition(objects, fill float64) int {
-	need := math.Ceil(objects / (RecordsPerSprig * fill) / Partitions)
+	need := ceilRatio(objects / (RecordsPerSprig * fill) / Partitions)
 	if need >= MaxSprigsPerPart {
 		return MaxSprigsPerPart
 	}
@@ -442,14 +516,15 @@ func Size(d, node Amounts, h Hypotheses, l Layout) Sizing {
 			s.Need[c] = 0
 			continue
 		}
-		ratio := demand / usable.Of(c)
-		if usable.Of(c) <= 0 || ratio > MaxNodes {
+		// Bounded before the conversion to int, which a count past the integers would overflow.
+		whole := ceilRatio(demand / usable.Of(c))
+		if usable.Of(c) <= 0 || whole > MaxNodes {
 			if failed == "" {
 				failed = c
 			}
 			continue
 		}
-		need := nodesFor(int(math.Ceil(ratio)), h, l)
+		need := nodesFor(int(whole), h, l)
 		s.Need[c] = need
 		if need > s.Nodes {
 			s.Nodes, s.Binding = need, c

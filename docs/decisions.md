@@ -562,3 +562,32 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
 - Les textes du sizer qui atteignent wellness (explication, adéquation, notes, bornes) restent en anglais
   à ce stade ; leur traduction est l'objet d'un tour suivant.
 - Effet : aucun chiffre ne change.
+
+### Notes de bornes près de la borne, liste partagée complétée
+
+- **Valeur et borne jamais écrites de même.** Près d'une borne, le format de la page écrivait de même la
+  valeur donnée et la valeur retenue : « Average record size 8.00 MiB is above 8.00 MiB » pour
+  8 390 000 o, « Storage fill 100% is above 100% » pour 1,0004, « Records 1e+15 is above 1e+15 »,
+  « Growth 10000% is above 10000% » ; et le rapport, au dixième, disait « 1 times below » jusqu'à 5 %
+  au-delà de 8 Mio (8 700 000 o : 1,037 fois). Le champ « Average record size » de la page n'a pas de
+  maximum, et wellness envoie des enregistrements fusionnés juste au-delà de 8 Mio.
+  - Quand le format de la page les écrit de même, la note écrit la valeur donnée et la valeur retenue
+    exactement, avec autant de décimales qu'il en faut pour les distinguer (« 8,390,000 B is above
+    8,388,608 B », « 100.04% is above 100.00% », « 4.99% is below 5.00% »).
+  - Un rapport sous 1,1 garde son écart, avec deux décimales au moins (« 1.04 times below »,
+    « 1.0002 times below », « 1.03 times fewer than given »).
+  - Les nombres non entiers prennent leurs séparateurs de milliers (« 1,048,576.5 B »). Ailleurs, les
+    textes ne changent pas ; wellness ne lit pas `note`.
+- **Liste partagée des `CLAUDE.md`.**
+  - La règle de lecture de la première section rejoint la ligne des IO disque : aucun bloc sans
+    enregistrement ou avec des enregistrements de 0 octet (moteur device, objets > 0, taille
+    stockée > 0), avec sizer T18 et wellness T46. La ligne disait ⌈taille stockée ÷ 4 Kio⌉ blocs
+    sur les lectures trouvées sans condition : 100 000 IOPS pour 0 objet de 1 024 o à 100 000
+    lectures/s, où le sizer en compte 0.
+  - La ligne des IOPS de planification prêtait au sizer les Azure Lasv3, que son catalogue n'a pas
+    (L8s_v3 à L80s_v3 seulement) : elle les attribue au seul catalogue de wellness, tant que le sizer
+    ne les ajoute pas.
+  - Les deux modifications sont à reporter à l'identique dans la liste de wellness, qui reste la même
+    dans les deux `CLAUDE.md`.
+- Aucune décision antérieure n'est contredite. Effet : aucun chiffre ne change ; seules les notes de
+  `clamps` près d'une borne changent de texte.

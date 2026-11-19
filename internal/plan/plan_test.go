@@ -187,7 +187,7 @@ func TestOversizedWorkloadLeavesANotePerProvider(t *testing.T) {
 	req := DefaultRequest()
 	req.Workload.Objects = 1e14 // 16 PB of primary index
 	resp := Compute(req, referenceQuoter{})
-	if resp.Generic.Nodes != 0 || len(resp.Rows) != 0 || len(resp.Notes) != 3 || resp.Notes[0] != "AWS: no instance type of the catalog suits this workload." {
+	if resp.Generic.Nodes != 0 || len(resp.Rows) != 0 || len(resp.Notes) != 3 || resp.Notes[0] != "AWS: no instance type of the catalog offered in eu-west-3 · Paris suits this workload." {
 		t.Errorf("generic nodes %d, rows %d, notes %q", resp.Generic.Nodes, len(resp.Rows), resp.Notes)
 	}
 }
@@ -249,6 +249,29 @@ func TestUnknownRowsAreIgnoredWithANote(t *testing.T) {
 	}
 	if !resp.Pending {
 		t.Error("pending prices must be reported")
+	}
+}
+
+// A type the region does not offer is ignored with a note, as an unknown one is, and never offered
+// as a recommendation or an alternative there.
+func TestTypesNotOfferedInTheRegionAreIgnored(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = []string{"gcp"}
+	req.Rows = []RowRequest{
+		{ID: "jakarta", Provider: "gcp", Region: "asia-southeast2", Instance: "z3-highmem-8-highlssd", Nodes: 3},
+		{ID: "singapore", Provider: "gcp", Region: "asia-southeast1", Instance: "z3-highmem-8-highlssd", Nodes: 3},
+	}
+	resp := Compute(req, referenceQuoter{})
+	want := `Google Cloud: instance type "z3-highmem-8-highlssd" is not offered in asia-southeast2 · Jakarta, ignored.`
+	if len(resp.Rows) != 2 || resp.Rows[1].ID != "singapore" || len(resp.Notes) != 1 || resp.Notes[0] != want {
+		t.Fatalf("rows %d, notes %q", len(resp.Rows), resp.Notes)
+	}
+	for _, r := range resp.Rows {
+		for _, c := range []*Row{&r, r.Alternative} {
+			if c != nil && !c.Instance.OfferedIn(c.Region.ID) {
+				t.Errorf("%s: %s is not offered in %s", c.ID, c.Instance.Name, c.Region.ID)
+			}
+		}
 	}
 }
 

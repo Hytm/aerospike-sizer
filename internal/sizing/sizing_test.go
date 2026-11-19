@@ -556,6 +556,11 @@ func TestNormalize(t *testing.T) {
 	if w.ObjectSize != MaxObjectSize || w.Objects != MaxObjects || w.ReadsPerSec != MaxRate || w.WritesPerSec != MaxRate || w.RF != MaxRF || w.SindexEntries != MaxSindexEntries {
 		t.Errorf("bounded workload = %+v", w)
 	}
+	// Secondary index bytes measured over few or merged records come as many entries per record:
+	// they are used as given.
+	if w := (Workload{SindexEntries: 25000}).Normalize(); w.SindexEntries != 25000 {
+		t.Errorf("25,000 secondary index entries per record: %v used", w.SindexEntries)
+	}
 	// The share of reads that find a record is 1 when absent and stays within [0, 1].
 	for _, c := range []struct {
 		in   *float64

@@ -50,12 +50,15 @@ type Workload struct {
 
 // Bounds of a workload: the largest values an estimate accepts, so that every figure stays finite
 // whatever the request says. MaxObjectSize is the write block, the largest record Aerospike stores.
+// MaxSindexEntries is far beyond what a record of 8 MiB holds (a few million list or map elements):
+// it bounds a mistyped value, never secondary index bytes measured over few or merged records, and
+// every figure stays finite (at most about 8.5e34 B).
 const (
 	MaxRF            = 8
 	MaxObjectSize    = 8 << 20
 	MaxObjects       = 1e15
 	MaxRate          = 1e9 // transactions per second
-	MaxSindexEntries = 1e4
+	MaxSindexEntries = 1e9
 )
 
 // Normalize clamps the workload to meaningful values and drops the placements its engine rules out.

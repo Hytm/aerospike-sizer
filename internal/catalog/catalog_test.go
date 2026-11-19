@@ -1,7 +1,9 @@
 package catalog
 
 import (
+	"cmp"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ func TestEveryProviderIsComplete(t *testing.T) {
 	if len(Providers) != 3 {
 		t.Fatalf("%d providers", len(Providers))
 	}
+	names := map[string]bool{}
 	for _, p := range Providers {
 		if _, ok := p.Region(p.DefaultRegion); !ok {
 			t.Errorf("%s: default region %q is not listed", p.Key, p.DefaultRegion)
@@ -18,15 +21,60 @@ func TestEveryProviderIsComplete(t *testing.T) {
 		if PricesRegion[p.Key] == "" {
 			t.Errorf("%s: no reference price region", p.Key)
 		}
-		last := 0.0
-		for _, i := range p.Instances {
-			if i.VCPU <= 0 || i.RAMGiB <= 0 || i.Drives <= 0 || i.DriveGB <= 0 || i.IOPS <= 0 || i.PriceHour <= 0 {
+		for _, r := range p.Regions {
+			if len(p.Offered(r.ID)) == 0 {
+				t.Errorf("%s: region %s offers no instance type", p.Key, r.ID)
+			}
+		}
+		for k, i := range p.Instances {
+			if names[i.Name] {
+				t.Errorf("%s is listed twice", i.Name)
+			}
+			names[i.Name] = true
+			if i.VCPU <= 0 || i.RAMGiB <= 0 || i.Drives <= 0 || i.DriveGB <= 0 || i.IOPS <= 0 || i.PriceHour <= 0 || i.Family == "" {
 				t.Errorf("%s %s: incomplete %+v", p.Key, i.Name, i)
 			}
-			if i.PriceHour < last {
-				t.Errorf("%s %s: instances must go from the cheapest to the dearest", p.Key, i.Name)
+			if i.Arch != "x86_64" && i.Arch != "arm64" {
+				t.Errorf("%s: arch %q", i.Name, i.Arch)
 			}
-			last = i.PriceHour
+			// The reference price is read in PricesRegion: the type is offered there.
+			if !i.OfferedIn(PricesRegion[p.Key]) {
+				t.Errorf("%s: not offered in %s, where its reference price is read", i.Name, PricesRegion[p.Key])
+			}
+			for _, r := range i.Regions {
+				if _, ok := p.Region(r); !ok {
+					t.Errorf("%s: region %q is not one of %s's", i.Name, r, p.Key)
+				}
+			}
+			if k > 0 {
+				prev := p.Instances[k-1]
+				if cmp.Or(cmp.Compare(prev.PriceHour, i.PriceHour), strings.Compare(prev.Name, i.Name)) >= 0 {
+					t.Errorf("%s %s after %s: instances go from the cheapest to the dearest, then by name", p.Key, i.Name, prev.Name)
+				}
+			}
+		}
+	}
+}
+
+// Offered keeps the types a region offers, in the catalog's price order, and only them.
+func TestOfferedKeepsThePriceOrder(t *testing.T) {
+	for _, p := range Providers {
+		for _, r := range p.Regions {
+			want := slices.DeleteFunc(slices.Clone(p.Instances), func(i Instance) bool { return !slices.Contains(i.Regions, r.ID) })
+			if got := p.Offered(r.ID); !slices.EqualFunc(got, want, func(a, b Instance) bool { return a.Name == b.Name }) {
+				t.Errorf("%s %s: offered %d types, want %d", p.Key, r.ID, len(got), len(want))
+			}
+		}
+	}
+	// Google offers no Z3 in Jakarta (gcloud-compute.com region tables, read 2026-11-19).
+	p, _ := Get("gcp")
+	jakarta := p.Offered("asia-southeast2")
+	if len(jakarta) == 0 || len(jakarta) >= len(p.Instances) {
+		t.Fatalf("%d of %d types offered in asia-southeast2", len(jakarta), len(p.Instances))
+	}
+	for _, i := range jakarta {
+		if i.Family == "z3" {
+			t.Errorf("%s is not offered in asia-southeast2", i.Name)
 		}
 	}
 }

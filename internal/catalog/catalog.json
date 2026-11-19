@@ -45,57 +45,135 @@
   "instances": [
    {
     "name": "i4i.large",
+    "family": "i4i",
+    "arch": "x86_64",
     "vcpu": 2,
     "ram_gib": 16,
     "drives": 1,
     "drive_gb": 468,
     "iops": 13750,
-    "price_hour": 0.172
+    "price_hour": 0.172,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
    },
    {
     "name": "i4i.xlarge",
+    "family": "i4i",
+    "arch": "x86_64",
     "vcpu": 4,
     "ram_gib": 32,
     "drives": 1,
     "drive_gb": 937,
     "iops": 27500,
-    "price_hour": 0.343
+    "price_hour": 0.343,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
    },
    {
     "name": "i4i.2xlarge",
+    "family": "i4i",
+    "arch": "x86_64",
     "vcpu": 8,
     "ram_gib": 64,
     "drives": 1,
     "drive_gb": 1875,
     "iops": 55000,
-    "price_hour": 0.686
+    "price_hour": 0.686,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
    },
    {
     "name": "i4i.4xlarge",
+    "family": "i4i",
+    "arch": "x86_64",
     "vcpu": 16,
     "ram_gib": 128,
     "drives": 1,
     "drive_gb": 3750,
     "iops": 110000,
-    "price_hour": 1.373
+    "price_hour": 1.373,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
    },
    {
     "name": "i4i.8xlarge",
+    "family": "i4i",
+    "arch": "x86_64",
     "vcpu": 32,
     "ram_gib": 256,
     "drives": 2,
     "drive_gb": 3750,
     "iops": 220000,
-    "price_hour": 2.746
+    "price_hour": 2.746,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
    },
    {
     "name": "i4i.16xlarge",
+    "family": "i4i",
+    "arch": "x86_64",
     "vcpu": 64,
     "ram_gib": 512,
     "drives": 4,
     "drive_gb": 3750,
     "iops": 440000,
-    "price_hour": 5.491
+    "price_hour": 5.491,
+    "regions": [
+     "us-east-1",
+     "us-west-2",
+     "eu-west-1",
+     "eu-west-3",
+     "eu-central-1",
+     "ap-southeast-1",
+     "ap-southeast-3",
+     "ap-northeast-1",
+     "sa-east-1"
+    ]
    }
   ]
  },
@@ -145,183 +223,431 @@
   "instances": [
    {
     "name": "c4a-standard-4-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 4,
     "ram_gib": 16,
     "drives": 1,
     "drive_gb": 402.65,
     "iops": 37500,
-    "price_hour": 0.2412
+    "price_hour": 0.2412,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "c4a-highmem-4-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 4,
     "ram_gib": 32,
     "drives": 1,
     "drive_gb": 402.65,
     "iops": 37500,
-    "price_hour": 0.2974
+    "price_hour": 0.2974,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "c4a-standard-8-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 8,
     "ram_gib": 32,
     "drives": 2,
     "drive_gb": 402.65,
     "iops": 75000,
-    "price_hour": 0.4824
+    "price_hour": 0.4824,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "c4a-highmem-8-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 8,
     "ram_gib": 64,
     "drives": 2,
     "drive_gb": 402.65,
     "iops": 75000,
-    "price_hour": 0.5948
+    "price_hour": 0.5948,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "c4a-standard-16-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 16,
     "ram_gib": 64,
     "drives": 4,
     "drive_gb": 402.65,
     "iops": 150000,
-    "price_hour": 0.9648
+    "price_hour": 0.9648,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "z3-highmem-8-highlssd",
+    "family": "z3",
+    "arch": "x86_64",
     "vcpu": 8,
     "ram_gib": 64,
     "drives": 1,
     "drive_gb": 3221.23,
     "iops": 250000,
-    "price_hour": 1.1519
+    "price_hour": 1.1519,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-northeast1"
+    ]
    },
    {
     "name": "c4a-highmem-16-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 16,
     "ram_gib": 128,
     "drives": 4,
     "drive_gb": 402.65,
     "iops": 150000,
-    "price_hour": 1.1896
+    "price_hour": 1.1896,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "c4a-standard-32-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 32,
     "ram_gib": 128,
     "drives": 6,
     "drive_gb": 402.65,
     "iops": 225000,
-    "price_hour": 1.8064
+    "price_hour": 1.8064,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "c4a-highmem-32-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 32,
     "ram_gib": 256,
     "drives": 6,
     "drive_gb": 402.65,
     "iops": 225000,
-    "price_hour": 2.256
+    "price_hour": 2.256,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "z3-highmem-16-highlssd",
+    "family": "z3",
+    "arch": "x86_64",
     "vcpu": 16,
     "ram_gib": 128,
     "drives": 2,
     "drive_gb": 3221.23,
     "iops": 500000,
-    "price_hour": 2.3039
+    "price_hour": 2.3039,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-northeast1"
+    ]
    },
    {
     "name": "c4a-standard-48-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 48,
     "ram_gib": 192,
     "drives": 10,
     "drive_gb": 402.65,
     "iops": 375000,
-    "price_hour": 2.7712
+    "price_hour": 2.7712,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "z3-highmem-22-highlssd",
+    "family": "z3",
+    "arch": "x86_64",
     "vcpu": 22,
     "ram_gib": 176,
     "drives": 3,
     "drive_gb": 3221.23,
     "iops": 750000,
-    "price_hour": 3.25
+    "price_hour": 3.25,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-northeast1"
+    ]
    },
    {
     "name": "c4a-highmem-48-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 48,
     "ram_gib": 384,
     "drives": 10,
     "drive_gb": 402.65,
     "iops": 375000,
-    "price_hour": 3.4456
+    "price_hour": 3.4456,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "c4a-standard-64-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 64,
     "ram_gib": 256,
     "drives": 14,
     "drive_gb": 402.65,
     "iops": 525000,
-    "price_hour": 3.736
+    "price_hour": 3.736,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "c4a-standard-72-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 72,
     "ram_gib": 288,
     "drives": 16,
     "drive_gb": 402.65,
     "iops": 600000,
-    "price_hour": 4.2184
+    "price_hour": 4.2184,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "z3-highmem-32-highlssd",
+    "family": "z3",
+    "arch": "x86_64",
     "vcpu": 32,
     "ram_gib": 256,
     "drives": 4,
     "drive_gb": 3221.23,
     "iops": 1000000,
-    "price_hour": 4.6077
+    "price_hour": 4.6077,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-northeast1"
+    ]
    },
    {
     "name": "c4a-highmem-64-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 64,
     "ram_gib": 512,
     "drives": 14,
     "drive_gb": 402.65,
     "iops": 525000,
-    "price_hour": 4.6352
+    "price_hour": 4.6352,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "c4a-highmem-72-lssd",
+    "family": "c4a",
+    "arch": "arm64",
     "vcpu": 72,
     "ram_gib": 576,
     "drives": 16,
     "drive_gb": 402.65,
     "iops": 600000,
-    "price_hour": 5.23
+    "price_hour": 5.23,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-southeast2",
+     "asia-northeast1",
+     "southamerica-east1"
+    ]
    },
    {
     "name": "z3-highmem-44-highlssd",
+    "family": "z3",
+    "arch": "x86_64",
     "vcpu": 44,
     "ram_gib": 352,
     "drives": 6,
     "drive_gb": 3221.23,
     "iops": 1500000,
-    "price_hour": 6.5
+    "price_hour": 6.5,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-northeast1"
+    ]
    },
    {
     "name": "z3-highmem-88-highlssd",
+    "family": "z3",
+    "arch": "x86_64",
     "vcpu": 88,
     "ram_gib": 704,
     "drives": 12,
     "drive_gb": 3221.23,
     "iops": 3000000,
-    "price_hour": 13.0
+    "price_hour": 13.0,
+    "regions": [
+     "us-central1",
+     "us-east1",
+     "us-west1",
+     "europe-west1",
+     "europe-west3",
+     "asia-southeast1",
+     "asia-northeast1"
+    ]
    }
   ]
  },
@@ -367,57 +693,129 @@
   "instances": [
    {
     "name": "L8s_v3",
+    "family": "Lsv3",
+    "arch": "x86_64",
     "vcpu": 8,
     "ram_gib": 64,
     "drives": 1,
     "drive_gb": 1920,
     "iops": 60000,
-    "price_hour": 0.696
+    "price_hour": 0.696,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
+     "germanywestcentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
    },
    {
     "name": "L16s_v3",
+    "family": "Lsv3",
+    "arch": "x86_64",
     "vcpu": 16,
     "ram_gib": 128,
     "drives": 2,
     "drive_gb": 1920,
     "iops": 120000,
-    "price_hour": 1.392
+    "price_hour": 1.392,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
+     "germanywestcentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
    },
    {
     "name": "L32s_v3",
+    "family": "Lsv3",
+    "arch": "x86_64",
     "vcpu": 32,
     "ram_gib": 256,
     "drives": 4,
     "drive_gb": 1920,
     "iops": 240000,
-    "price_hour": 2.784
+    "price_hour": 2.784,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
+     "germanywestcentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
    },
    {
     "name": "L48s_v3",
+    "family": "Lsv3",
+    "arch": "x86_64",
     "vcpu": 48,
     "ram_gib": 384,
     "drives": 6,
     "drive_gb": 1920,
     "iops": 360000,
-    "price_hour": 4.176
+    "price_hour": 4.176,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
+     "germanywestcentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
    },
    {
     "name": "L64s_v3",
+    "family": "Lsv3",
+    "arch": "x86_64",
     "vcpu": 64,
     "ram_gib": 512,
     "drives": 8,
     "drive_gb": 1920,
     "iops": 480000,
-    "price_hour": 5.568
+    "price_hour": 5.568,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
+     "germanywestcentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
    },
    {
     "name": "L80s_v3",
+    "family": "Lsv3",
+    "arch": "x86_64",
     "vcpu": 80,
     "ram_gib": 640,
     "drives": 10,
     "drive_gb": 1920,
     "iops": 600000,
-    "price_hour": 6.96
+    "price_hour": 6.96,
+    "regions": [
+     "eastus",
+     "westus2",
+     "westeurope",
+     "francecentral",
+     "germanywestcentral",
+     "southeastasia",
+     "japaneast",
+     "brazilsouth"
+    ]
    }
   ]
  }

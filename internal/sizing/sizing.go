@@ -390,10 +390,11 @@ func Detailed(w Workload, h Hypotheses) Detail {
 		// 4 KiB blocks whatever the record size.
 		d.WriteIOPS = w.WritesPerSec * float64(w.RF) * stored * h.DefragMult / DeviceBlockBytes
 	}
-	if w.Engine == Device {
+	if w.Engine == Device && objects > 0 && stored > 0 {
 		// A read that finds its record fetches the 4 KiB blocks the record spans, unless a cache
 		// serves it (the cache share is measured over the reads that reach the storage); one that
-		// finds nothing stops at the primary index.
+		// finds nothing stops at the primary index. Without a record, or with records of no bytes,
+		// no read finds anything on the device.
 		d.BlocksPerRead = max(math.Ceil(stored/DeviceBlockBytes), 1)
 		d.ReadIOPS = w.ReadsPerSec * w.FoundShare() * (1 - h.CacheHit) * d.BlocksPerRead
 	}

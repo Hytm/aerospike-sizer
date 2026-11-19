@@ -224,7 +224,7 @@ func TestZeroWorkloadNeedsTheTopologyFloorOnly(t *testing.T) {
 	}
 	// All-flash: the smallest configurable index is still allocated.
 	d = Detailed(Workload{RF: 2, Engine: Device, IndexOn: OnFlash}.Normalize(), h)
-	if d.SprigsPerPartition != 256 || !near(d.Storage, 4096*2*256*4101) || !near(d.RAM, 4096*2*256*10) || d.IOPS != 0 || d.BlocksPerRead != 1 {
+	if d.SprigsPerPartition != 256 || !near(d.Storage, 4096*2*256*4101) || !near(d.RAM, 4096*2*256*10) || d.IOPS != 0 || d.BlocksPerRead != 0 {
 		t.Errorf("empty all-flash namespace demand = %+v", d)
 	}
 	if s := Size(d.Amounts, node, h, l); s.Nodes != 3 || s.Binding != ByTopology || s.Need[ByStorage] != 2 {
@@ -644,5 +644,25 @@ func TestBoundedTellsEveryClamp(t *testing.T) {
 	}
 	if _, clamps := DefaultHypotheses().Bounded(); len(clamps) != 0 {
 		t.Errorf("default hypotheses clamps = %+v", clamps)
+	}
+}
+
+// No record on the device, or records of no bytes: reads find nothing there and fetch no block,
+// as in aerospike-wellness (its ReadsReachDrives); they keep their CPU.
+func TestReadsFetchNoBlockWithoutRecordBytes(t *testing.T) {
+	h := DefaultHypotheses()
+	for _, w := range []Workload{
+		{ObjectSize: 0, Objects: 1e6, ReadsPerSec: 1e5, RF: 2, Engine: Device},
+		{ObjectSize: 1024, Objects: 0, ReadsPerSec: 1e5, RF: 2, Engine: Device},
+	} {
+		d := Detailed(w.Normalize(), h)
+		if d.ReadIOPS != 0 || d.BlocksPerRead != 0 || d.CPU == 0 {
+			t.Errorf("%+v: read IOPS %v, blocks %v, CPU %v", w, d.ReadIOPS, d.BlocksPerRead, d.CPU)
+		}
+	}
+	// A record overhead gives the records bytes: reads fetch them again.
+	h.RecordOverhead = 64
+	if d := Detailed(Workload{Objects: 1e6, ReadsPerSec: 1e5, RF: 2, Engine: Device}.Normalize(), h); d.BlocksPerRead != 1 || !near(d.ReadIOPS, 1.3e5) {
+		t.Errorf("records of 64 B: blocks %v, read IOPS %v", d.BlocksPerRead, d.ReadIOPS)
 	}
 }

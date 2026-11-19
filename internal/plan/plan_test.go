@@ -275,6 +275,22 @@ func TestTypesNotOfferedInTheRegionAreIgnored(t *testing.T) {
 	}
 }
 
+// The recommendation is made among the types the row's region offers (T19): for a small workload
+// the whole AWS catalog would give r6id.large × 3, a type Paris does not offer.
+func TestRecommendationTakesOnlyTypesTheRegionOffers(t *testing.T) {
+	req := DefaultRequest()
+	req.Auto = []string{"aws"}
+	req.Workload.Objects, req.Workload.ReadsPerSec, req.Workload.WritesPerSec = 1e6, 1000, 100
+	resp := Compute(req, referenceQuoter{})
+	if len(resp.Rows) != 1 || len(resp.Notes) != 0 {
+		t.Fatalf("rows %+v, notes %q", resp.Rows, resp.Notes)
+	}
+	r := resp.Rows[0]
+	if r.Region.ID != "eu-west-3" || !r.Instance.OfferedIn(r.Region.ID) || r.Instance.Name != "i8g.large" || r.Nodes != 3 {
+		t.Errorf("recommendation = %s × %d in %s; want i8g.large × 3 in eu-west-3", r.Instance.Name, r.Nodes, r.Region.ID)
+	}
+}
+
 func TestSettingsComeBackNormalized(t *testing.T) {
 	req := DefaultRequest()
 	req.Network.AZs = 1

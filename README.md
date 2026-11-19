@@ -25,7 +25,8 @@ What it computes:
   (30 % by default) applied to the records and to the throughput alike (CPU, device IOPS, replication
   traffic), and the ceilings of the Aerospike capacity planning guide: device usage 50 %, RAM 70 % after
   10 % for the OS (5 GiB at least), CPU 60 %, headroom for the loss of a node or a rack, at least RF+1
-  nodes, the same number in every rack. A demand that is an exact multiple of a node takes
+  nodes (RF from 1 to 8 copies, 0 read as 1), the same number in every rack; a node shape that needs
+  more than 10,000 nodes for one resource is unfit. A demand that is an exact multiple of a node takes
   exactly that many nodes: ratios are rounded up past floating-point error only (1e-12 relative).
   Aerospike Wellness sizes with the same conventions. Device IO is counted in 4 KiB blocks,
   the unit of the instances' sustained IOPS: a read that finds its record fetches the blocks the record

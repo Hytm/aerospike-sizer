@@ -36,8 +36,9 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
 
 - Le dimensionnement, le trafic réseau et la comparaison de coûts sont calculés côté serveur
   (`internal/sizing`, `internal/network`, `internal/plan`), testés en Go ; le front n'affiche que ce que
-  renvoie `POST /api/plan` (le formulaire entier en une requête, réponse JSON avec les explications).
-  `GET /api/defaults` donne le catalogue et le formulaire d'ouverture.
+  renvoie `POST /api/plan` (le formulaire entier en une requête, réponse JSON avec les explications ; un
+  champ absent de la requête garde la valeur du formulaire d'ouverture, amendé le 2026-11-19, T18 :
+  champs absents). `GET /api/defaults` donne le catalogue et le formulaire d'ouverture.
 - L'API n'accepte que `Content-Type: application/json` : un autre site ne peut pas y poster sans
   requête préalable, que le serveur ne permet jamais. Fournisseur, région et instance sont validés contre
   le catalogue avant toute recherche de prix.
@@ -240,7 +241,8 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
     enregistrements ≤ 10¹⁵ ; débit ≤ 10⁹/s ; nœud générique borné de même) : plus de +Inf ni de NaN, et
     une réponse non encodable répond désormais 500 au lieu d'un 200 vide (amendé le 2026-11-19, T18 :
     chaque borne appliquée est dite dans `clamps` de la réponse et sur la page ; entrées d'index
-    secondaire bornées à 10⁹ par enregistrement au lieu de 10⁴) ;
+    secondaire bornées à 10⁹ par enregistrement au lieu de 10⁴ ; amendé le 2026-11-19, T18 : bornes
+    basses et hypothèses, consignées dans la section des conventions partagées) ;
   - `partition-tree-sprigs` reste dans sa plage de configuration (référence : défaut et minimum 256,
     maximum 256M, puissance de deux ; au-delà de 32K, consulter le support Aerospike, ce que
     l'explication dit) : le sizer plafonnait à 65 536 et descendait jusqu'à 1 sprig, et son arrondi
@@ -373,10 +375,10 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   grand `effective_replication_factor` que rapportent les nœuds, quand il est supérieur à 0), avec une
   note qui nomme les namespaces concernés (sa décision T31, amendée le 2026-11-16, T44). Aucun
   changement de code ici : le sizer dimensionne les copies qu'on lui donne (RF borné à 8, plancher RF + 1
-  nœuds). Au-delà de 8 copies stockées (`replication-factor 99` sur 9 nœuds ou plus), wellness les
-  transmet toutes et les dimensionne toutes ; le sizer en planifie 8, donc moins de nœuds, et une note
-  d'avertissement de wellness le dit (ses décisions T29 et T31) (amendé le 2026-11-19, T18 : le sizer le
-  dit aussi, dans `clamps` et sur sa page).
+  nœuds ; amendé le 2026-11-19, T18 : 0 lu 1). Au-delà de 8 copies stockées (`replication-factor 99`
+  sur 9 nœuds ou plus), wellness les transmet toutes et les dimensionne toutes ; le sizer en planifie 8,
+  donc moins de nœuds, et une note d'avertissement de wellness le dit (ses décisions T29 et T31)
+  (amendé le 2026-11-19, T18 : le sizer le dit aussi, dans `clamps` et sur sa page).
 
 ## T18 — Parité avec wellness : écarts relevés le 2026-11-19
 
@@ -530,3 +532,33 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   18 instantanés à copies mêlées : la RAM d'index que le sizer leur planifie baisse de 12 à 38 % et égale
   celle de wellness, avec moins de nœuds là où la RAM dimensionne ; les 28 instantanés à un seul facteur
   envoient entre 63,9 et 64 B au lieu de 64, moins de 0,1 % d'écart.
+
+### Conventions partagées consignées, liste commune des deux CLAUDE.md
+
+- wellness s'appuie sur des conventions du sizer que ses décisions ne disaient pas. Elles sont consignées
+  ici, sans changement de code :
+  - un `rf` explicite de 0 ou moins est lu 1 (plancher de 2 nœuds ; borne dite dans `clamps`), un `rf`
+    absent garde le défaut du formulaire (2), au-delà de 8 : 8 ;
+  - gabarit inadapté quand une ressource demande plus de 10 000 nœuds en service (avant le nœud perdu et
+    l'arrondi aux racks, `MaxNodes`) : 0 nœud et la ressource qui manque, aucune recommandation sur ce
+    gabarit ni configuration confortable au-delà ; nœuds d'une configuration ajoutée bornés de 1 à
+    10 000 ;
+  - bornes des hypothèses, basses comme hautes : plafonds (stockage, RAM, CPU, IO), compression et
+    remplissage des sprigs de 5 à 100 %, cache 0 à 100 %, croissance 0 à +10 000 %, surcoût d'écriture
+    0 à 10, défragmentation 1 à 100, 100 à 10 000 000 transactions par vCPU, réserve OS 0 à
+    1 000 000 Gio et au plus 90 % de la RAM, octets d'index primaire par copie, de RAM par sprig et par
+    entrée d'index secondaire 0 à 1 Mio, surcoût d'enregistrement 0 à 8 Mio, sparseness 1 à 100 ; perte
+    inconnue lue un nœud ;
+  - défauts communs : croissance 30 %, stockage 50 % sans surcoût, RAM 70 % après max(5 Gio, 10 %),
+    CPU 60 % de 15 000 transactions/s par vCPU, IO 100 %, défragmentation 1,3, cache 0, perte d'un nœud ;
+  - une sous-transaction batch compte comme une transaction dans les lectures et écritures par seconde
+    (CPU, IOPS, réseau) ;
+  - la perte d'un rack ne planifie jamais moins de nœuds que celle d'un nœud ;
+  - un champ absent de la requête garde la valeur du formulaire d'ouverture (`DefaultRequest`) : wellness
+    n'envoie qu'une partie des réglages réseau.
+- La liste « Dimensionnement partagé » est la même dans les deux `CLAUDE.md`, avec les décisions de chaque
+  outil (wellness T46) : celle du sizer omettait la perte à survivre, les copies stockées et les bornes,
+  celle de wellness les plafonds, les blocs de 4 Kio, le cache nul et les IOPS de planification.
+- Les textes du sizer qui atteignent wellness (explication, adéquation, notes, bornes) restent en anglais
+  à ce stade ; leur traduction est l'objet d'un tour suivant.
+- Effet : aucun chiffre ne change.

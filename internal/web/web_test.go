@@ -76,6 +76,10 @@ func TestPagesAndAssets(t *testing.T) {
 	if want := `data-path="workload.reads_found" data-scale="100" min="0" max="100"`; !strings.Contains(body, want) {
 		t.Errorf("home: no %s input", want)
 	}
+	// The primary index takes any decimal, as wellness sends its effective bytes per record copy.
+	if want := `<span class="unit">B per record copy</span><input type="number" data-path="hypotheses.index_bytes" min="0" step="any">`; !strings.Contains(body, want) {
+		t.Errorf("home: no %s input", want)
+	}
 	// The notes of the inputs the server bounded have their place under the prefill notice.
 	if !strings.Contains(body, `<div id="clamps"></div>`) {
 		t.Errorf("home: no place for the clamp notes")

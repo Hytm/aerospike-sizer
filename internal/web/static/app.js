@@ -20,6 +20,7 @@
   var ratesAsOf = "";    // date of the default network rates
   var livePrices = {};   // provider key → this server looks its prices up live
   var tight = 0.85;      // load above which a resource is tight (sizing.TightLoad)
+  var tolerance = 1e-12; // relative error of the arithmetic a load may carry (sizing.RatioTolerance)
   var req = null;        // the form: workload, node, hypotheses, network
   var rows = [];         // configurations added by the user
   var auto = [];         // providers whose recommended configuration is listed
@@ -242,8 +243,12 @@
     if (!addNodesTouched && r.generic.nodes) $("addNodes").value = r.generic.nodes;
   }
 
+  // over tells whether a load passes a limit by more than the error of the arithmetic, as the fit
+  // grades it (sizing.exceeds).
+  function over(load, limit) { return load * (1 - tolerance) > limit; }
+
   function gauge(util, ceiling, load) {
-    var cls = load > 1 ? "crit" : load > tight ? "warn" : "";
+    var cls = over(load, 1) ? "crit" : over(load, tight) ? "warn" : "";
     return '<div class="gauge ' + cls + '"><div style="width:' + Math.min(100, util * 100).toFixed(1) + '%"></div>' +
       '<span style="left:' + (ceiling * 100).toFixed(1) + '%" title="Ceiling ' + pct(ceiling) + '"></span></div>';
   }
@@ -567,6 +572,7 @@
     ratesAsOf = d.rates_as_of || "";
     livePrices = d.live_prices || {};
     tight = (d.thresholds && d.thresholds.tight) || tight;
+    tolerance = (d.thresholds && d.thresholds.tolerance) || tolerance;
     req = clone(defaults);
     delete req.auto;
     auto = defaults.auto.slice();

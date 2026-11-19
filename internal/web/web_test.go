@@ -110,7 +110,7 @@ func TestDefaults(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &d); err != nil {
 		t.Fatal(err)
 	}
-	if d.Request.Workload.RF != 2 || len(d.Providers) != 3 || len(d.Request.Auto) != 3 || d.Thresholds["tight"] != sizing.TightLoad || d.PricesAsOf == "" || d.RatesAsOf == "" {
+	if d.Request.Workload.RF != 2 || len(d.Providers) != 3 || len(d.Request.Auto) != 3 || d.Thresholds["tight"] != sizing.TightLoad || d.Thresholds["tolerance"] != sizing.RatioTolerance || d.PricesAsOf == "" || d.RatesAsOf == "" {
 		t.Errorf("defaults = %+v", d)
 	}
 	// The form opens with every read finding its record; a number, so that the URL can prefill it.

@@ -400,7 +400,7 @@
     var c = row.cost;
     return '<tr class="' + (alt ? "alt" : "") + (isBest ? " choice" : "") + '">' +
       "<td><strong>" + esc(i.name) + "</strong>" + tags +
-      '<div class="small muted">' + i.vcpu + " vCPU · " + i.ram_gib + " GiB · " + i.drives + "×" + i.drive_gb + " GB NVMe · " + count(i.iops) + " IOPS</div>" +
+      '<div class="small muted">' + i.vcpu + " vCPU · " + i.ram_gib + " GiB · " + i.drives + "×" + i.drive_gb + " GB NVMe · " + count(i.iops) + " IOPS" + (i.arch === "arm64" ? " · arm64" : "") + "</div>" +
       '<div class="small muted">' + esc(row.region.label) + "</div></td>" +
       '<td class="num"><input type="number" class="qty" min="1" step="1" value="' + row.nodes + '" data-row="' + esc(row.id) + '" aria-label="Nodes"></td>' +
       '<td><span class="badge ' + FIT[row.fit.status][0] + '">' + FIT[row.fit.status][1] + "</span>" +
@@ -484,16 +484,37 @@
     return list.map(function (x) { return '<option value="' + esc(value(x)) + '">' + esc(label(x)) + "</option>"; }).join("");
   }
 
+  function addProvider() {
+    return providers.find(function (x) { return x.key === $("addProvider").value; }) || providers[0];
+  }
+
   function fillAddForm() {
-    var p = providers.find(function (x) { return x.key === $("addProvider").value; }) || providers[0];
+    var p = addProvider();
     $("addRegion").innerHTML = options(p.regions, function (r) { return r.id; }, function (r) { return r.label; });
     $("addRegion").value = p.default_region;
-    $("addInstance").innerHTML = options(p.instances, function (i) { return i.name; }, function (i) {
-      return i.name + " — " + i.vcpu + " vCPU, " + i.ram_gib + " GiB, " + (i.drives * i.drive_gb / 1000).toFixed(1) + " TB";
+    fillInstances();
+  }
+
+  // fillInstances lists the types the region offers, one group per family, families and sizes from
+  // the cheapest; the selected type stays when the new region offers it too.
+  function fillInstances() {
+    var region = $("addRegion").value, kept = $("addInstance").value, families = [], byFamily = {};
+    addProvider().instances.forEach(function (i) {
+      if (i.regions.indexOf(region) < 0) return;
+      if (!byFamily[i.family]) { byFamily[i.family] = []; families.push(i.family); }
+      byFamily[i.family].push(i);
     });
+    $("addInstance").innerHTML = families.map(function (f) {
+      return '<optgroup label="' + esc(f) + '">' + options(byFamily[f], function (i) { return i.name; }, function (i) {
+        return i.name + " — " + i.vcpu + " vCPU, " + i.ram_gib + " GiB, " + (i.drives * i.drive_gb / 1000).toFixed(1) + " TB" + (i.arch === "arm64" ? ", arm64" : "");
+      }) + "</optgroup>";
+    }).join("");
+    $("addInstance").value = kept;
+    if ($("addInstance").selectedIndex < 0) $("addInstance").selectedIndex = 0;
   }
 
   $("addProvider").addEventListener("change", fillAddForm);
+  $("addRegion").addEventListener("change", fillInstances);
   $("addNodes").addEventListener("input", function () { addNodesTouched = true; });
   $("addRow").addEventListener("click", function () {
     rows.push({

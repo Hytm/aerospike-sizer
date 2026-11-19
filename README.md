@@ -41,8 +41,11 @@ What it computes:
 - **Replication traffic** across AZs (rack-awareness, Active Rack, Local read, client placement) or
   across regions with XDR, and its monthly cost per provider: cross-AZ rates (AWS both directions,
   Google Cloud egress only, Azure free since 2024) or inter-region rates, editable.
-- **Cost comparison**: each provider's cheapest comfortable configuration, plus the ones you add, with
-  live on-demand prices for AWS and Azure in the chosen region and reference prices otherwise.
+- **Cost comparison**: each provider's cheapest comfortable configuration among the instance types its
+  region offers, plus the ones you add, with live on-demand prices for AWS (AWS price list) and Azure
+  (Retail Prices API) in the chosen region and reference prices otherwise. The catalog holds the same
+  instance types and figures as Aerospike Wellness's: AWS i4i, i7ie, i8g, i3en, r6id and im4gn; Google
+  Cloud C4A, C3 and Z3; Azure Lsv3 and Lasv3. The Arm types (i8g, im4gn, C4A) are marked arm64.
 
 The form can be prefilled from the URL, one parameter per field named as in the API
 (`/?workload.objects=4e9&workload.index_on=flash&hypotheses.growth=0.2`); Aerospike Wellness links here

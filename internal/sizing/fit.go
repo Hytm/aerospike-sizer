@@ -103,20 +103,23 @@ type Option struct {
 // cluster (the aerospike-wellness penalty).
 const nodePenaltyPer = 50
 
-// Recommend returns the cheapest comfortable configuration of the instance types given, a provider's
-// in a region, cheapest first (reference prices, every load under TightLoad), else the cheapest one
-// that holds. Nodes are added to a shape while that is cheaper than a larger one, with a penalty on
-// large node counts. ok is false when no instance type suits the demand.
-func Recommend(insts []catalog.Instance, d Amounts, h Hypotheses, l Layout) (Option, bool) {
+// Recommend returns the recommended configuration among the instance types given, a provider's in
+// a region (decision T21, the rule aerospike-wellness applies too): the comfortable count of each
+// type (every load under TightLoad, the topology rules met), or, when no type is comfortable, the
+// count that holds; then the lowest score, the reference hourly rate of the basis × nodes × (1 +
+// nodes ÷ 50), so that dozens of small nodes do not win over a sensible cluster; on a tie, fewer
+// nodes, then the name, whatever the order of the types. ok is false when no instance type suits the
+// demand.
+func Recommend(insts []catalog.Instance, d Amounts, h Hypotheses, l Layout, b catalog.Basis) (Option, bool) {
 	var comfortable, holding candidate
 	for _, inst := range insts {
 		s := Size(d, OfInstance(inst), h, l)
 		if s.Nodes == 0 {
 			continue
 		}
-		holding.consider(inst, s.Nodes)
+		holding.consider(inst, s.Nodes, b)
 		if n, ok := comfortableNodes(d, OfInstance(inst), h, l); ok {
-			comfortable.consider(inst, n)
+			comfortable.consider(inst, n, b)
 		}
 	}
 	if comfortable.found {
@@ -131,10 +134,18 @@ type candidate struct {
 	found bool
 }
 
-func (c *candidate) consider(inst catalog.Instance, nodes int) {
-	score := inst.PriceHour * float64(nodes) * (1 + float64(nodes)/nodePenaltyPer)
-	if !c.found || score < c.score {
-		*c = candidate{Option: Option{Instance: inst, Nodes: nodes}, score: score, found: true}
+// score is what the recommendation minimizes: the hourly rate of a configuration with a penalty on
+// large node counts (+2 % per node). It is computed from the hourly rate, as aerospike-wellness
+// does, so that both tools break the same float ties.
+func score(rate float64, nodes int) float64 {
+	return rate * float64(nodes) * (1 + float64(nodes)/nodePenaltyPer)
+}
+
+func (c *candidate) consider(inst catalog.Instance, nodes int, b catalog.Basis) {
+	s := score(inst.Rate(b), nodes)
+	if !c.found || s < c.score ||
+		s == c.score && (nodes < c.Nodes || nodes == c.Nodes && inst.Name < c.Instance.Name) {
+		*c = candidate{Option: Option{Instance: inst, Nodes: nodes}, score: s, found: true}
 	}
 }
 
@@ -159,16 +170,21 @@ func comfortableNodes(d, node Amounts, h Hypotheses, l Layout) (int, bool) {
 	return 0, false
 }
 
-// Comfortable returns the cheapest of the instance types given, a provider's in a region listed by
-// price, that fits comfortably with the given node count (every load under TightLoad, the topology
-// rules met).
-func Comfortable(insts []catalog.Instance, d Amounts, h Hypotheses, l Layout, nodes int) (catalog.Instance, bool) {
+// Comfortable returns the cheapest of the instance types given, a provider's in a region, that fits
+// comfortably with the given node count (every load under TightLoad, the topology rules met): the
+// lowest reference rate of the basis, on a tie the name, whatever the order of the types.
+func Comfortable(insts []catalog.Instance, d Amounts, h Hypotheses, l Layout, nodes int, b catalog.Basis) (catalog.Instance, bool) {
+	var best catalog.Instance
+	found := false
 	for _, inst := range insts {
-		if Evaluate(d, OfInstance(inst), nodes, h, l).Status == OK {
-			return inst, true
+		if Evaluate(d, OfInstance(inst), nodes, h, l).Status != OK {
+			continue
+		}
+		if r := inst.Rate(b); !found || r < best.Rate(b) || r == best.Rate(b) && inst.Name < best.Name {
+			best, found = inst, true
 		}
 	}
-	return catalog.Instance{}, false
+	return best, found
 }
 
 // Explain tells in a sentence or two what drives a sizing.

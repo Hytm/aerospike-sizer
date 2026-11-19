@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"maps"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hytm/aerospike-sizer/internal/catalog"
 	"github.com/Hytm/aerospike-sizer/internal/plan"
 	"github.com/Hytm/aerospike-sizer/internal/pricing"
 	"github.com/Hytm/aerospike-sizer/internal/service"
@@ -80,6 +82,10 @@ func TestPagesAndAssets(t *testing.T) {
 	if want := `<span class="unit">B per record copy</span><input type="number" data-path="hypotheses.index_bytes" min="0" step="any">`; !strings.Contains(body, want) {
 		t.Errorf("home: no %s input", want)
 	}
+	// The comparison chooses its pricing basis; the regions of the recommendations come from the catalog.
+	if want := `data-path="pricing.basis"><button type="button" data-v="on_demand">On demand</button><button type="button" data-v="commitment_1y">1-year commitment</button></div>`; !strings.Contains(body, want) || !strings.Contains(body, `id="pricing"`) {
+		t.Errorf("home: no pricing basis %s", want)
+	}
 	// The notes of the inputs the server bounded have their place under the prefill notice.
 	if !strings.Contains(body, `<div id="clamps"></div>`) {
 		t.Errorf("home: no place for the clamp notes")
@@ -106,16 +112,23 @@ func TestDefaults(t *testing.T) {
 		Providers []struct {
 			Key string `json:"key"`
 		} `json:"providers"`
-		Live       map[string]bool    `json:"live_prices"`
-		Thresholds map[string]float64 `json:"thresholds"`
-		PricesAsOf string             `json:"prices_as_of"`
-		RatesAsOf  string             `json:"rates_as_of"`
+		Live        map[string]bool    `json:"live_prices"`
+		Thresholds  map[string]float64 `json:"thresholds"`
+		PricesAsOf  string             `json:"prices_as_of"`
+		PricesTerms map[string]string  `json:"prices_terms"`
+		RatesAsOf   string             `json:"rates_as_of"`
 	}
 	if err := json.Unmarshal([]byte(body), &d); err != nil {
 		t.Fatal(err)
 	}
 	if d.Request.Workload.RF != 2 || len(d.Providers) != 3 || len(d.Request.Auto) != 3 || d.Thresholds["tight"] != sizing.TightLoad || d.Thresholds["tolerance"] != sizing.RatioTolerance || d.PricesAsOf == "" || d.RatesAsOf == "" {
 		t.Errorf("defaults = %+v", d)
+	}
+	// The form opens on demand, each provider's recommendation in its default region, and names the
+	// one-year terms of every provider for the other basis (T21).
+	if p := d.Request.Pricing; p.Basis != catalog.OnDemand || !maps.Equal(p.Regions, plan.DefaultPricing().Regions) ||
+		len(d.PricesTerms) != 3 || d.PricesTerms["aws"] != catalog.PricesTerms["aws"] {
+		t.Errorf("pricing %+v, terms %v", p, d.PricesTerms)
 	}
 	// The form opens with every read finding its record; a number, so that the URL can prefill it.
 	if f := d.Request.Workload.ReadsFound; f == nil || *f != 1 {
@@ -155,6 +168,33 @@ func TestPlanKeepsDefaultsForMissingFields(t *testing.T) {
 	// Nothing was bounded: the list is there, empty, like the notes.
 	if !strings.Contains(body, `"clamps":[]`) {
 		t.Errorf("plan without clamps: %s", body)
+	}
+}
+
+// The pricing of a request picks the basis and the region of each recommendation; a provider left
+// out keeps its default region, and the next request starts from the defaults again (T21).
+func TestPlanTakesThePricing(t *testing.T) {
+	srv := newTestServer(t)
+	plans := func(body string) plan.Response {
+		t.Helper()
+		resp, out := post(t, srv.URL+"/api/plan", "application/json", body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d: %s", resp.StatusCode, out)
+		}
+		var r plan.Response
+		if err := json.Unmarshal([]byte(out), &r); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	r := plans(`{"auto":["gcp"],"pricing":{"basis":"commitment_1y","regions":{"gcp":"us-east1"}}}`)
+	if r.Pricing.Basis != catalog.Commitment1Y || r.Pricing.Regions["gcp"] != "us-east1" || r.Pricing.Regions["aws"] != "eu-west-3" ||
+		len(r.Rows) != 1 || r.Rows[0].Region.ID != "us-east1" || r.Rows[0].Price.Basis != catalog.Commitment1Y || r.Rows[0].Price.Source != pricing.Reference {
+		t.Errorf("pricing %+v, rows %+v", r.Pricing, r.Rows)
+	}
+	r = plans(`{"auto":["gcp"]}`)
+	if r.Pricing.Basis != catalog.OnDemand || r.Pricing.Regions["gcp"] != "europe-west1" || len(r.Rows) != 1 || r.Rows[0].Region.ID != "europe-west1" {
+		t.Errorf("a request without pricing: %+v, rows %+v", r.Pricing, r.Rows)
 	}
 }
 

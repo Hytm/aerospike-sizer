@@ -24,10 +24,11 @@ const (
 	Pending   Source = "pending"   // reference price while a live lookup runs and no live price is known
 )
 
-// Quote is the hourly on-demand price of one node.
+// Quote is the hourly price of one node.
 type Quote struct {
-	Hourly float64 `json:"hourly"`
-	Source Source  `json:"source"`
+	Hourly float64       `json:"hourly"`
+	Source Source        `json:"source"`
+	Basis  catalog.Basis `json:"basis"` // on_demand, or commitment_1y (always a reference price, T21)
 }
 
 // Fetcher reads the hourly on-demand Linux price of an instance type in a region.
@@ -86,7 +87,7 @@ func (b *Book) now() time.Time {
 // one is stale. While a lookup runs, a known live price is quoted (stale but live); otherwise the
 // quote is Pending with the reference price, so that the interface asks again.
 func (b *Book) Quote(provider, region string, inst catalog.Instance) Quote {
-	ref := Quote{Hourly: inst.PriceHour, Source: Reference}
+	ref := Quote{Hourly: inst.PriceHour, Source: Reference, Basis: catalog.OnDemand}
 	f := b.Fetchers[provider]
 	if f == nil {
 		return ref
@@ -108,9 +109,9 @@ func (b *Book) Quote(provider, region string, inst catalog.Instance) Quote {
 	}
 	switch {
 	case e.ok:
-		return Quote{Hourly: e.price, Source: Live}
+		return Quote{Hourly: e.price, Source: Live, Basis: catalog.OnDemand}
 	case e.loading:
-		return Quote{Hourly: inst.PriceHour, Source: Pending}
+		return Quote{Hourly: inst.PriceHour, Source: Pending, Basis: catalog.OnDemand}
 	}
 	return ref
 }

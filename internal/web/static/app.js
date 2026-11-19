@@ -19,6 +19,7 @@
   var pricesAsOf = "";   // date of the reference prices
   var ratesAsOf = "";    // date of the default network rates
   var livePrices = {};   // provider key → this server looks its prices up live
+  var pricesTerms = {};  // provider key → the one-year commitment priced (catalog.PricesTerms)
   var tight = 0.85;      // load above which a resource is tight (sizing.TightLoad)
   var tolerance = 1e-12; // relative error of the arithmetic a load may carry (sizing.RatioTolerance)
   var req = null;        // the form: workload, node, hypotheses, network
@@ -72,6 +73,8 @@
       var v = getPath(req, el.getAttribute("data-path"));
       if (el.classList.contains("seg")) {
         markSeg(el, String(v));
+      } else if (el.tagName === "SELECT") {
+        el.value = v;
       } else if (el.type === "checkbox") {
         el.checked = !!v;
       } else {
@@ -160,7 +163,7 @@
 
   document.addEventListener("input", function (e) {
     var el = e.target, path = el.getAttribute && el.getAttribute("data-path");
-    if (!path || el.type === "checkbox") return;
+    if (!path || el.type === "checkbox" || el.tagName === "SELECT") return;
     var v = parseFloat(el.value);
     if (isNaN(v)) return; // keep the last valid value while the field is being edited
     setPath(req, path, clampTo(el, v) / scaleOf(el));
@@ -172,8 +175,8 @@
   document.addEventListener("change", function (e) {
     var el = e.target, path = el.getAttribute && el.getAttribute("data-path");
     if (!path) return;
-    if (el.type === "checkbox") {
-      setPath(req, path, el.checked);
+    if (el.type === "checkbox" || el.tagName === "SELECT") {
+      setPath(req, path, el.tagName === "SELECT" ? el.value : el.checked);
       changed();
       return;
     }
@@ -239,6 +242,7 @@
     renderRows(r);
     // The inputs the server moved into their bounds, with what it used instead.
     $("clamps").innerHTML = (r.clamps || []).map(function (c) { return '<div class="notice warn small">' + esc(c.note) + "</div>"; }).join("");
+    $("pricesNote").textContent = pricesNote(r.pricing.basis);
     $("notes").innerHTML = r.notes.map(function (n) { return '<div class="notice warn small">' + esc(n) + "</div>"; }).join("");
     if (!addNodesTouched && r.generic.nodes) $("addNodes").value = r.generic.nodes;
   }
@@ -379,6 +383,10 @@
   }
 
   function priceSource(row, p) {
+    if (row.price.basis === "commitment_1y") {
+      var terms = row.instance.reserved_via === "savings-plan" ? "EC2 Instance Savings Plan, 1 year, No Upfront" : pricesTerms[p.key];
+      return '<span class="nature" title="1-year commitment list price in US East (' + esc(terms) + "), read on " + esc(pricesAsOf) + ': no live source publishes it">reference · 1 year</span>';
+    }
     if (row.price.source === "pending") return '<span class="nature"><span class="spinner"></span> looking up</span>';
     var badge = row.price.source === "live"
       ? '<span class="nature live" title="Public on-demand price in ' + esc(row.region.id) + '">live</span>'
@@ -389,7 +397,7 @@
 
   function rowHTML(row, p, alt, best) {
     var i = row.instance, h = last.hypotheses, isBest = best && best.id === row.id;
-    var tags = (row.auto ? ' <span class="badge sev-info" title="Cheapest configuration of this provider for the workload; follows the form">recommended</span>' : "") +
+    var tags = (row.auto ? ' <span class="badge sev-info" title="Lowest reference price on the selected basis among the types its region offers, plus 2 % per node, every load under 85 %; follows the form">recommended</span>' : "") +
       (alt ? ' <span class="badge sev-info" title="Cheapest instance type that fits comfortably with as many nodes">comfortable alternative</span>' : "") +
       (isBest ? ' <span class="badge sev-ok" title="Lowest monthly cost among the configurations that fit comfortably">lowest cost</span>' : "");
     var usage = RESOURCES.map(function (res) {
@@ -488,6 +496,20 @@
     return providers.find(function (x) { return x.key === $("addProvider").value; }) || providers[0];
   }
 
+  // buildPricing adds one select per provider for the region of its recommendation.
+  function buildPricing() {
+    providers.forEach(function (p) {
+      var label = document.createElement("label"), sel = document.createElement("select");
+      label.className = "f";
+      label.textContent = p.label + " region";
+      sel.setAttribute("data-path", "pricing.regions." + p.key);
+      sel.setAttribute("aria-label", p.label + " region of the recommendation");
+      sel.innerHTML = options(p.regions, function (r) { return r.id; }, function (r) { return r.label; });
+      label.appendChild(sel);
+      $("pricing").appendChild(label);
+    });
+  }
+
   function fillAddForm() {
     var p = addProvider();
     $("addRegion").innerHTML = options(p.regions, function (r) { return r.id; }, function (r) { return r.label; });
@@ -575,8 +597,13 @@
     note.hidden = false;
   }
 
-  // pricesNote says which prices this server reads live, and what applies otherwise.
-  function pricesNote() {
+  // pricesNote says which prices apply: one-year commitments are reference prices only; on demand,
+  // this server reads some live and falls back on the reference otherwise.
+  function pricesNote(basis) {
+    if (basis === "commitment_1y") {
+      return "Prices: 1-year commitment list prices in US East read on " + pricesAsOf + ", whatever the region (AWS " + pricesTerms.aws +
+        ", or EC2 Instance Savings Plan where AWS sells no reserved instance; Azure " + pricesTerms.azure + "; Google Cloud " + pricesTerms.gcp + "): no live source publishes them.";
+    }
     var live = providers.filter(function (p) { return livePrices[p.key]; }).map(function (p) { return p.label; });
     var reference = "the reference on-demand list price in US East read on " + pricesAsOf;
     if (!live.length) return "Prices: " + reference + " applies to every configuration (live lookups are off on this server).";
@@ -592,12 +619,14 @@
     pricesAsOf = d.prices_as_of;
     ratesAsOf = d.rates_as_of || "";
     livePrices = d.live_prices || {};
+    pricesTerms = d.prices_terms || {};
     tight = (d.thresholds && d.thresholds.tight) || tight;
     tolerance = (d.thresholds && d.thresholds.tolerance) || tolerance;
     req = clone(defaults);
     delete req.auto;
     auto = defaults.auto.slice();
-    $("pricesNote").textContent = pricesNote();
+    $("pricesNote").textContent = pricesNote(defaults.pricing.basis);
+    buildPricing();
     document.querySelectorAll(".ratesAsOf").forEach(function (el) { el.textContent = ratesAsOf; });
     $("addProvider").innerHTML = options(providers, function (p) { return p.key; }, function (p) { return p.label; });
     fillAddForm();

@@ -70,6 +70,11 @@ locale (`make ci`), et on n'en ajoute pas.
   - arrondi par excès des ratios à 10⁻¹² près (sizer T18 ; wellness T46) ;
   - bornes jamais silencieuses : toute valeur que le sizer ramène dans ses bornes revient dans `clamps`,
     que wellness dit dans son panneau (sizer T18 ; wellness T46) ;
+  - choix de la machine, une seule règle : par fournisseur, parmi les types offerts dans la région, la
+    configuration confortable (chaque charge à 85 % au plus de son plafond, sinon celle qui tient) de plus
+    petit score prix de référence × nœuds × (1 + nœuds ÷ 50), à égalité le moins de nœuds puis le nom ;
+    wellness classe au prix d'un engagement d'un an en US East et le transmet au sizer (`pricing`) ; le
+    sizer seul ouvre au prix à la demande (sizer T5, T21 ; wellness T23, T49) ;
   - Un changement de convention se fait dans les deux outils (`~/work/aerospike-sizer` et
     `~/work/aerospike-wellness`) et se consigne dans les deux `docs/decisions.md` ; cette liste est la
     même dans les deux `CLAUDE.md`.

@@ -151,6 +151,8 @@ tr.choice td { background: var(--ok-bg); }
 .cost { font-weight: 650; }
 .addrow { display: grid; grid-template-columns: 1fr 1.4fr 1.6fr 90px auto; gap: 8px; align-items: end; padding: 6px 0; }
 tr.add td { border-bottom: 0; }
+.pricing { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 8px; align-items: end; margin: 8px 0 4px; }
+.pricing > * { min-width: 0; }
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
@@ -158,9 +160,10 @@ tr.add td { border-bottom: 0; }
   header.top nav a { padding: 6px 6px; }
   header.top .version { display: none; }
   main { padding: 16px 12px 40px; }
-  .addrow { grid-template-columns: 1fr 1fr; }
+  .addrow, .pricing { grid-template-columns: 1fr 1fr; }
   .hero { flex-wrap: wrap; }
 }
 @media (max-width: 600px) {
   .grid.k4 { grid-template-columns: 1fr 1fr; }
+  .pricing { grid-template-columns: 1fr; }
 }

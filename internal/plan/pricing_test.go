@@ -101,8 +101,8 @@ func TestDefaultPricingIsNewOnEveryCall(t *testing.T) {
 }
 
 // The requests aerospike-wellness sends for six synthetic clusters get the configurations its
-// machine comparison recommends: its TestOptionsFollowTheSizersRecommendation holds the same table
-// (decision T21), and both change together.
+// machine comparison recommends: its tests hold the same table (decision T21, its T49), and both
+// change together.
 func TestWellnessRequestsGetWellnessPicks(t *testing.T) {
 	want := map[string]map[string]pick{
 		"device-storage": {"aws": {"i4i.2xlarge", 9}, "gcp": {"c3-standard-8-lssd", 18}, "azure": {"L8as_v3", 9}},

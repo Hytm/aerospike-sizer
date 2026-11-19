@@ -204,6 +204,67 @@ func TestSprigsPerPartitionStayInTheConfigurableRange(t *testing.T) {
 	}
 }
 
+// The vectors of the all-flash index both tools plan with: aerospike-wellness's
+// TestFlashIndexVectorsSharedWithTheSizer holds the same table (T20 here, T48 there), so that a
+// change of the formula or of a constant in one tool fails a test until the other follows. Every
+// product is an integer below 2^53, hence the exact comparisons.
+func TestFlashIndexVectorsSharedWithWellness(t *testing.T) {
+	h := DefaultHypotheses()
+	h.Growth = 0
+	for _, c := range []struct {
+		objects float64
+		copies  int
+		spp     int
+	}{
+		{4e9, 2, 32768}, // the capacity planning guide's example: 1 TiB of blocks, 2.5 GiB of RAM
+		{0, 2, 256},
+		{256 * 4096 * 32, 2, 256},
+		{math.Nextafter(256*4096*32, 1e10), 2, 256},
+		{256*4096*32 + 1, 2, 512},
+		{8.5e8, 2, 8192},
+		{1e10, 3, 131072},
+		{1.2e11, 3, 1048576},
+		{1e24, 1, MaxSprigsPerPart},
+	} {
+		w := Workload{Objects: c.objects, RF: c.copies, ReadsPerSec: 1000, WritesPerSec: 100, Engine: Device, IndexOn: OnFlash}
+		d := Detailed(w, h)
+		sprigs := 4096 * float64(c.copies) * float64(c.spp)
+		iops := 1000 + 2*100*float64(c.copies)
+		if d.SprigsPerPartition != c.spp || d.FlashIndex != sprigs*4101 || d.Sprigs != sprigs*10 || d.IndexIOPS != iops {
+			t.Errorf("%v records, RF%d: %d sprigs per partition, %v B on flash, %v B of RAM, %v IOPS; want %d, %v, %v, %v",
+				c.objects, c.copies, d.SprigsPerPartition, d.FlashIndex, d.Sprigs, d.IndexIOPS, c.spp, sprigs*4101, sprigs*10, iops)
+		}
+	}
+	if h.SprigFill != 0.5 || h.SprigRAMBytes != 10 || SupportSprigsPerPart != 32768 {
+		t.Errorf("defaults: fill %v, %v B per sprig, Support above %d: want wellness's 0.5, 10 and 32768", h.SprigFill, h.SprigRAMBytes, SupportSprigsPerPart)
+	}
+}
+
+// The sizer plans the flash index from the placement and the copies it is sent, whatever namespace
+// they come from (T20): an index sent in RAM takes no sprig, block or index IO, even without a
+// record, where wellness plans 256 sprigs per partition for a namespace with index-type flash and
+// no record; sprigs and index IO follow workload.rf, the copies of the namespace storing the most,
+// even one without a record whose index is in RAM.
+func TestFlashIndexFollowsThePlacementAndCopiesSent(t *testing.T) {
+	h := DefaultHypotheses()
+	h.Growth = 0
+	for _, objects := range []float64{0, 1e9} {
+		w := Workload{ObjectSize: 1024, Objects: objects, ReadsPerSec: 1000, WritesPerSec: 100, RF: 2, Engine: Device, IndexOn: InRAM}
+		if d := Detailed(w, h); d.FlashIndex != 0 || d.Sprigs != 0 || d.SprigsPerPartition != 0 || d.IndexIOPS != 0 {
+			t.Errorf("%v records, index in RAM: %v B on flash, %v B of sprigs, %d per partition, %v index IOPS; want none",
+				objects, d.FlashIndex, d.Sprigs, d.SprigsPerPartition, d.IndexIOPS)
+		}
+	}
+	w := Workload{ObjectSize: 1024, Objects: 1e9, ReadsPerSec: 1000, WritesPerSec: 100, RF: 2, Engine: Device, IndexOn: OnFlash}
+	two := Detailed(w, h)
+	w.RF = 3
+	three := Detailed(w, h)
+	if three.SprigsPerPartition != two.SprigsPerPartition || three.FlashIndex != 1.5*two.FlashIndex || three.IndexIOPS != 1000+2*100*3 {
+		t.Errorf("RF3: %d sprigs per partition, %v B on flash, %v index IOPS; want %d, %v, %v",
+			three.SprigsPerPartition, three.FlashIndex, three.IndexIOPS, two.SprigsPerPartition, 1.5*two.FlashIndex, 1000+2*100*3)
+	}
+}
+
 // The secondary index guide's example: 10 million entries take 10^7 × 14 B × 1.5 = 200 MiB.
 func TestSecondaryAndSetIndexes(t *testing.T) {
 	h := DefaultHypotheses()

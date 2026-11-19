@@ -122,8 +122,8 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   T18) ; espace flash = 4096 partitions × RF × sprigs × 4 KiB, plus 5 B par sprig (racines écrites à
   l'arrêt) ; 10 B de RAM par sprig (13 avant 5.7). Remplissage 50 % par défaut, comme l'exemple du guide
   (4 milliards d'enregistrements RF2 → 32 768 sprigs par partition, 1 TiB sur flash, 2,5 GiB de RAM).
-  L'IO de l'index flash est une estimation du sizer, pas du guide : une lecture de bloc par lecture, une
-  lecture et une écriture par copie écrite.
+  L'IO de l'index flash est une estimation du sizer, pas du guide, que wellness compte de même (amendé le
+  2026-11-19, T20) : une lecture de bloc par lecture, une lecture et une écriture par copie écrite.
 - **Index secondaires** (6.0+) : 14 B par entrée (8 de valeur ou de hachage, 6 de référence) ×
   sparseness 1,5 en moyenne (2 au pire) × RF ; une entrée par bin scalaire indexé, une par élément
   distinct d'une liste ou d'une map ; saisie en « entrées par enregistrement, tous index confondus ».
@@ -170,8 +170,9 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   abandonne son minimum de 3 nœuds). Réserve OS : wellness adopte 10 % de la RAM avec un plancher de
   5 Gio (T31) et la transmet au sizer.
 - Les deux outils donnent désormais le même nombre de nœuds pour un même gabarit et les mêmes
-  hypothèses, aux constantes propres au sizer près (sprigs, index secondaires, surcoût
-  d'enregistrement, compression), que wellness transmet explicitement.
+  hypothèses, aux constantes propres au sizer près (index secondaires, surcoût d'enregistrement,
+  compression), que wellness transmet explicitement (amendé le 2026-11-19, T20 : les sprigs n'en sont
+  plus, wellness dimensionne avec les mêmes constantes).
 - Effet sur l'exemple par défaut (500 M × 1 KiB, 200 000 lectures/s + 40 000 écritures/s, nœud
   16 vCPU / 128 Gio) : 312 000 tx/s à l'horizon → 20,8 vCPU et 213 200 IOPS ; le nœud générique passe
   de 3 nœuds (plancher RF+1) à 6 (CPU, N+1 arrondi à 3 racks) ; recommandations AWS i4i.xlarge × 12
@@ -207,8 +208,8 @@ Choix techniques du sizer ; ils sont révisables. Une décision nouvelle s'ajout
   multiplie une seconde fois par le RF les IOPS d'écriture de son total.
 - Wellness compte de même depuis sa décision T34 (2026-10-30), à partir de la taille moyenne mesurée
   telle que stockée (transmise avec un surcoût de 0 et une compression de 1) : les deux outils donnent
-  le même nombre de nœuds quand les IOPS dimensionnent (T11), index primaire en RAM (wellness ne compte
-  pas d'IO pour l'index sur flash).
+  le même nombre de nœuds quand les IOPS dimensionnent (T11), index primaire en RAM ou sur flash, wellness
+  comptant aussi les sprigs et l'IO d'index (amendé le 2026-11-19, T20).
 - Effet sur l'exemple par défaut (500 M × 1 Kio, 200 000 lectures/s + 40 000 écritures/s, +30 %) :
   213 200 → 111 800 IOPS (écritures 135 200 → 33 800) ; nœuds et recommandations inchangés (le CPU
   dimensionne).
@@ -524,13 +525,15 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   `objects` 0, le sizer ne planifie alors ni index ni stockage d'enregistrements, et wellness avertit
   que ses configurations laissent de côté ces octets d'index et d'enregistrements (choix de
   l'utilisateur : pas de champ de tombstones dans l'API ; wellness T46). Aucun cluster réel n'est dans
-  ce cas.
+  ce cas. (amendé le 2026-11-19, T20 : avec l'index sur flash, le sizer planifie toutefois 256 sprigs
+  par partition, le minimum configurable, et wellness les mêmes.)
 - **Écart qui demeure** : l'espace de l'index primaire all-flash. wellness compte les octets mesurés
   (`index_flash_used_bytes`, environ 64 B par entrée) ; le sizer compte les blocs de sprigs du guide (T9 :
   4 096 partitions × RF × sprigs à 50 % de remplissage, arrondis à une puissance de deux, et 10 B de RAM
   par sprig) et l'IO de l'index. Sur les 17 instantanés réels à index flash, l'index flash du sizer fait
   2,2 à 3,8 fois celui de wellness : +13 à +38 % de stockage, jusqu'à 687 Go de RAM de sprigs. Hors de
-  ce tour, à décider.
+  ce tour, à décider. (amendé le 2026-11-19, T20 : écart fermé, wellness planifie l'index sur flash comme
+  le sizer, sprigs, RAM des sprigs et IO d'index compris.)
 - Compatibilité : aucun champ ajouté ni retiré à la requête, à la réponse ou au pré-remplissage ; un
   appelant autre que wellness garde chacun de ses chiffres et le sens de chaque champ.
 - Effets : aucun chiffre ne change pour une requête donnée ; les deux phrases n'apparaissent qu'avec un
@@ -679,3 +682,75 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   28 clusters sur AWS (6 avant), 98 sur Google (18) et 216 sur Azure (0) : le reste tient aux règles de
   choix (wellness classe au prix 1 an en US East, sans la marge de 85 % ni la pénalité par nœud du
   sizer ; le sizer recommande dans sa région par défaut), pas au catalogue.
+
+## T20 — Index primaire sur flash planifié de même par wellness (sprigs, RAM des sprigs, IO d'index)
+
+- Choix de l'utilisateur (2026-11-19), après comparaison des deux outils (décision T48 de wellness), qui
+  ferme l'écart laissé ouvert par T18. wellness comptait l'index primaire sur flash à ses octets mesurés
+  (`index_used_bytes`, `index_flash_used_bytes` avant 7.0, environ 64 o par entrée), sans RAM de sprigs ni IO d'index, et notait l'IO
+  comme un écart (ses décisions T44 et T46). Sur les 24 instantanés réels avec `index-type flash`
+  (dernier instantané de chaque cluster analysé), l'index flash du sizer valait 2,2 à 3,8 fois celui de
+  wellness, soit +13 à +38 % de stockage, plus 0,67 à 687 Go de RAM de sprigs et ×2,3 à ×14 d'IOPS ; le
+  sizer comptait 1,08 à 1,44 fois les nœuds de wellness sur 1 258 des 1 752 gabarits comparés.
+- **Convention partagée, celle de T9.**
+  - `partition-tree-sprigs` = la plus petite puissance de deux ≥ ⌈enregistrements maîtres à l'horizon
+    ÷ (64 × 0,5) ÷ 4 096⌉ (arrondi `ceilRatio`, T18), de 256 à 2²⁸, avec le renvoi au support Aerospike
+    au-delà de 32 768.
+  - Sur flash : 4 096 partitions × RF × sprigs × (4 096 + 5) o, compté dans le stockage.
+  - RAM : 10 o par sprig.
+  - IO : un bloc par lecture, trouvée ou non, plus une lecture et une écriture par copie écrite, au débit
+    à l'horizon.
+- **Rien ne change ici**, ni le calcul ni l'API. wellness envoie toujours la requête de T18 :
+  `workload.index_on` `flash` quand la plupart des octets de l'index sont sur flash avec le moteur
+  device, ou qu'aucun n'est en mémoire et qu'un namespace a `index-type flash` (jamais avec le moteur
+  mémoire ; wellness T48, relecture), `workload.objects` = objets maîtres, `workload.rf` = copies stockées, `hypotheses.index_bytes`
+  64 (sans usage sur flash), `hypotheses.sprig_fill` 0,5 et `hypotheses.sprig_ram_bytes` 10, qui sont
+  désormais les constantes avec lesquelles il dimensionne lui-même. Le sizer applique la croissance aux
+  objets comme wellness.
+- **Garantie nouvelle.** Quand tous les namespaces, ceux sans enregistrement compris, placent leur
+  index primaire de la même façon (pmem compté en mémoire, T18),
+  `generic.demand.flash_index`, `sprigs`, `index_iops` et `sprigs_per_partition` du sizer égalent ceux
+  que wellness planifie, et les deux outils donnent le même nombre de nœuds. Un namespace sans
+  enregistrement compte : wellness planifie les sprigs de tout namespace en `index-type flash`, 256 par
+  partition au moins, et `workload.rf` porte les copies du namespace qui en stocke le plus, quel que soit
+  son index. Sans enregistrement maître, des tombstones seules sur flash donnent les mêmes 256 sprigs par
+  partition dans les deux outils ; leurs autres octets restent l'écart de T18. Écarts qui demeurent :
+  - placements mêlés entre namespaces qui ont des enregistrements, où le sizer place l'index d'un bloc
+    (notes de T18) ;
+  - un namespace en `index-type flash` sans enregistrement ni tombstone à côté de namespaces qui ont
+    leur index en mémoire : le sizer, qui reçoit l'index d'un bloc en mémoire, où sont tous ses octets
+    mesurés (T18), ne lui planifie rien ; wellness lui planifie 256 sprigs par partition (8,6 Go de
+    blocs et 21 Mo de RAM en RF 2), et une note d'information de wellness le dit (T48, relecture du
+    2026-11-19). Sans aucun octet d'index en mémoire, wellness envoie l'index sur flash et les deux
+    outils planifient les mêmes 256 sprigs et la même IO d'index ;
+  - un namespace sans enregistrement dont l'index est en mémoire et qui stocke plus de copies que ceux
+    sur flash : le sizer planifie les sprigs et l'IO d'index à ces copies (`workload.rf`), wellness à
+    celles des namespaces sur flash (les deux tiers des blocs pour 2 copies contre 3) ; la note de
+    wellness sur les facteurs de réplication le dit ;
+  - moteur mémoire avec `index-type flash`, que le sizer planifie en RAM (T18) ;
+  - plus de 8 copies stockées (T17, T18).
+- **La formule est tenue en deux copies.** Le même tableau de vecteurs figure dans les deux suites
+  (`TestFlashIndexVectorsSharedWithWellness` ici, `TestFlashIndexVectorsSharedWithTheSizer` chez
+  wellness), dont l'exemple du guide : 4 milliards d'enregistrements RF2 → 32 768 sprigs par partition,
+  1 Tio sur flash, 2,5 Gio de RAM. Ses chiffres sont des entiers sous 2⁵³, comparés exactement. wellness
+  se compare en plus au sizer déployé (`WELLNESS_SIZER_PARITY`), à lancer après le déploiement de l'un ou
+  l'autre outil. Pas de module Go partagé, comme pour la tolérance d'arrondi (T18) : le modèle du sizer
+  est interne (`internal/sizing`). Tout changement de la formule ou d'une constante se fait dans les deux
+  dépôts et dans les deux tableaux.
+- **Un seul namespace.** Le sizer planifie un seul namespace. wellness planifie les enregistrements
+  maîtres de ses namespaces à index sur flash comme un seul namespace, au plus grand nombre de copies que
+  l'un d'eux stocke (choix de l'utilisateur) : c'est ce que le sizer reçoit et planifie dans le cas de
+  la garantie ci-dessus. Aerospike règle `partition-tree-sprigs` par namespace : sur les 16 instantanés
+  réels à plusieurs namespaces sur flash, un calcul par namespace donnerait de −13,8 à +10,6 % de
+  stockage, selon le côté où tombe l'arrondi à la puissance de deux. Les tombstones ne sont pas
+  comptées : sur les instantanés réels, qui en portent jusqu'à 25 % des enregistrements maîtres, elles
+  ne changeraient aucune puissance de deux.
+- La liste « Dimensionnement partagé » des deux `CLAUDE.md` gagne la ligne de l'index primaire sur flash
+  (sizer T9, T20 ; wellness T48).
+- Effet : aucun chiffre du sizer ne change, pour aucune requête. Sur les 24 instantanés, la demande
+  (stockage, RAM, IOPS, à six chiffres significatifs) et le nombre de nœuds de chaque gabarit du catalogue
+  envoyé comme nœud générique sont désormais les mêmes dans les deux outils : 0 nombre de nœuds différent
+  sur 1 752 comparaisons, contre 1 258 avant. Sur le matériel actuel connu où le stockage dimensionne,
+  wellness rejoint le nombre de nœuds du sizer (+27 % chez wellness). Compatibilité : aucun champ ajouté,
+  retiré ou renommé à la requête, à la réponse ou au pré-remplissage ; les deux ordres de déploiement sont
+  sûrs.

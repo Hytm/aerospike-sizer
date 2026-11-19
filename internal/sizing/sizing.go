@@ -205,7 +205,10 @@ type Hypotheses struct {
 	SindexSparseness float64 `json:"sindex_sparseness"`
 }
 
-// Constants of the Aerospike storage layout.
+// Constants of the Aerospike storage layout. aerospike-wellness plans an index on flash with the
+// same sprig constants and formula (its sizing.PlanFlashIndex, T48 there), so that both tools give
+// the same flash index, sprig RAM and index IO (T20): TestFlashIndexVectorsSharedWithWellness and its
+// twin there hold the same vectors.
 const (
 	Partitions      = 4096 // partitions of a namespace
 	RecordsPerSprig = 64   // 64 entries of 64 B fill one 4 KiB index block
@@ -450,7 +453,7 @@ func Detailed(w Workload, h Hypotheses) Detail {
 
 // sprigsPerPartition returns the partition-tree-sprigs an all-flash namespace needs: records over
 // 64 entries at the fill share, over the partitions, rounded up to a power of two within the
-// configurable range.
+// configurable range. aerospike-wellness's SprigsPerPartition is the same (T20).
 func sprigsPerPartition(objects, fill float64) int {
 	need := ceilRatio(objects / (RecordsPerSprig * fill) / Partitions)
 	if need >= MaxSprigsPerPart {

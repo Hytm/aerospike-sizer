@@ -516,9 +516,11 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   actuels dans la RAM du nœud générique qu'il envoie (`node.ram_gib`) et plus dans son stockage
   (`node.storage_tb`), avec une note (choix de l'utilisateur).
 - **Besoins sans enregistrement maître** (des tombstones seules, par exemple) : le sizer planifie les
-  index par enregistrement et ne peut pas les représenter ; wellness lui envoie `objects` 0 et avertit
-  que ses configurations laissent ces octets de côté (choix de l'utilisateur : pas de champ de
-  tombstones dans l'API). Aucun cluster réel n'est dans ce cas.
+  index et les enregistrements par objet maître et ne peut pas les représenter ; wellness lui envoie
+  `objects` 0, le sizer ne planifie alors ni index ni stockage d'enregistrements, et wellness avertit
+  que ses configurations laissent de côté ces octets d'index et d'enregistrements (choix de
+  l'utilisateur : pas de champ de tombstones dans l'API ; wellness T46). Aucun cluster réel n'est dans
+  ce cas.
 - **Écart qui demeure** : l'espace de l'index primaire all-flash. wellness compte les octets mesurés
   (`index_flash_used_bytes`, environ 64 B par entrée) ; le sizer compte les blocs de sprigs du guide (T9 :
   4 096 partitions × RF × sprigs à 50 % de remplissage, arrondis à une puissance de deux, et 10 B de RAM

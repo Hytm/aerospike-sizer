@@ -46,9 +46,9 @@ locale (`make ci`), et on n'en ajoute pas.
     wellness T44) ;
   - débit : une sous-transaction batch compte comme une transaction (sizer T18 ; wellness T44) ;
   - IO disque en blocs de 4 Kio : lecture de ⌈taille stockée ÷ 4 Kio⌉ blocs sur les seules lectures qui
-    trouvent un enregistrement, hors cache, aucun bloc sans enregistrement ou avec des enregistrements de
-    0 octet (moteur device, objets > 0, taille stockée > 0), toutes les lectures comptant pour le CPU et
-    le réseau ; écriture des octets de chaque copie × défragmentation (sizer T12, T17, T18 ; wellness
+    trouvent un enregistrement, hors cache, aucun bloc sans enregistrement maître ayant des octets sur
+    le disque (moteur device, objets > 0, taille stockée > 0), toutes les lectures comptant pour le CPU
+    et le réseau ; écriture des octets de chaque copie × défragmentation (sizer T12, T17, T18 ; wellness
     T31, T34, T46) ;
   - cache de lecture nul par défaut, prérempli avec le `cache_read_pct` mesuré, au dixième (sizer T15,
     T16 ; wellness T43) ;

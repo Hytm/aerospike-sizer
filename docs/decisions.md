@@ -687,7 +687,7 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
 
 - Choix de l'utilisateur (2026-11-19), après comparaison des deux outils (décision T48 de wellness), qui
   ferme l'écart laissé ouvert par T18. wellness comptait l'index primaire sur flash à ses octets mesurés
-  (`index_flash_used_bytes`, environ 64 o par entrée), sans RAM de sprigs ni IO d'index, et notait l'IO
+  (`index_used_bytes`, `index_flash_used_bytes` avant 7.0, environ 64 o par entrée), sans RAM de sprigs ni IO d'index, et notait l'IO
   comme un écart (ses décisions T44 et T46). Sur les 24 instantanés réels avec `index-type flash`
   (dernier instantané de chaque cluster analysé), l'index flash du sizer valait 2,2 à 3,8 fois celui de
   wellness, soit +13 à +38 % de stockage, plus 0,67 à 687 Go de RAM de sprigs et ×2,3 à ×14 d'IOPS ; le
@@ -702,12 +702,13 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
     à l'horizon.
 - **Rien ne change ici**, ni le calcul ni l'API. wellness envoie toujours la requête de T18 :
   `workload.index_on` `flash` quand la plupart des octets de l'index sont sur flash avec le moteur
-  device, `workload.objects` = objets maîtres, `workload.rf` = copies stockées, `hypotheses.index_bytes`
+  device, ou qu'aucun n'est en mémoire et qu'un namespace a `index-type flash` (jamais avec le moteur
+  mémoire ; wellness T48, relecture), `workload.objects` = objets maîtres, `workload.rf` = copies stockées, `hypotheses.index_bytes`
   64 (sans usage sur flash), `hypotheses.sprig_fill` 0,5 et `hypotheses.sprig_ram_bytes` 10, qui sont
   désormais les constantes avec lesquelles il dimensionne lui-même. Le sizer applique la croissance aux
   objets comme wellness.
-- **Garantie nouvelle.** Quand il y a au moins un enregistrement maître et que tous les namespaces,
-  qu'ils en aient ou non, placent leur index primaire de la même façon (pmem compté en mémoire, T18),
+- **Garantie nouvelle.** Quand tous les namespaces, ceux sans enregistrement compris, placent leur
+  index primaire de la même façon (pmem compté en mémoire, T18),
   `generic.demand.flash_index`, `sprigs`, `index_iops` et `sprigs_per_partition` du sizer égalent ceux
   que wellness planifie, et les deux outils donnent le même nombre de nœuds. Un namespace sans
   enregistrement compte : wellness planifie les sprigs de tout namespace en `index-type flash`, 256 par
@@ -716,12 +717,12 @@ a sa section ci-dessous ; wellness consigne les siens dans sa décision T46.
   partition dans les deux outils ; leurs autres octets restent l'écart de T18. Écarts qui demeurent :
   - placements mêlés entre namespaces qui ont des enregistrements, où le sizer place l'index d'un bloc
     (notes de T18) ;
-  - un namespace en `index-type flash` sans enregistrement quand la plupart des octets de l'index ne
-    sont pas sur flash : à côté de namespaces qui ont leur index en mémoire, ou sans aucune entrée
-    d'index nulle part. Le sizer, qui reçoit alors l'index en mémoire (T18), ne lui planifie rien ;
-    wellness lui planifie 256 sprigs par partition (8,6 Go de blocs et 21 Mo de RAM en RF 2), et l'IO
-    d'index de chaque lecture quand il n'y a aucun enregistrement maître. Le stockage et la RAM
-    diffèrent, le nombre de nœuds parfois, et aucune note ne le dit encore (relecture du 2026-11-19) ;
+  - un namespace en `index-type flash` sans enregistrement ni tombstone à côté de namespaces qui ont
+    leur index en mémoire : le sizer, qui reçoit l'index d'un bloc en mémoire, où sont tous ses octets
+    mesurés (T18), ne lui planifie rien ; wellness lui planifie 256 sprigs par partition (8,6 Go de
+    blocs et 21 Mo de RAM en RF 2), et une note d'information de wellness le dit (T48, relecture du
+    2026-11-19). Sans aucun octet d'index en mémoire, wellness envoie l'index sur flash et les deux
+    outils planifient les mêmes 256 sprigs et la même IO d'index ;
   - un namespace sans enregistrement dont l'index est en mémoire et qui stocke plus de copies que ceux
     sur flash : le sizer planifie les sprigs et l'IO d'index à ces copies (`workload.rf`), wellness à
     celles des namespaces sur flash (les deux tiers des blocs pour 2 copies contre 3) ; la note de
